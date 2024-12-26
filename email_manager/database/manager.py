@@ -187,9 +187,20 @@ class DatabaseManager:
             if result is None:
                 return None
             
-            # Detach the instance from the session but ensure all attributes are loaded
+            # Create a detached copy with all attributes loaded
             session.refresh(result)
-            return result
+            tech_content = TechContent(
+                id=result.id,
+                email_id=result.email_id,
+                subject=result.subject,
+                sender=result.sender,
+                content=result.content,
+                summary=result.summary,
+                received_date=result.received_date,
+                category=result.category,
+                archived_date=result.archived_date
+            )
+            return tech_content
 
     def get_deleted_email(self, email_id: str) -> Optional[DeletedEmail]:
         """Retrieve deleted email metadata by email ID

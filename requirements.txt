@@ -17,10 +17,11 @@ pyyaml>=6.0.0
 # Utilities
 rich>=13.0.0  # For better logging output
 tenacity>=8.0.0  # For retry logic
+pytz>=2023.3  # For timezone handling
 
 # Testing
 pytest>=7.0.0
-pytest-cov>=4.0.0
+pytest-cov>=4.0.0  # For coverage reporting
 pytest-mock>=3.10.0
 
 # Development

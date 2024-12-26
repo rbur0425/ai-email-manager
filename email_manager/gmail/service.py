@@ -4,6 +4,7 @@ Handles email operations and API interactions.
 """
 import base64
 from datetime import datetime
+import pytz
 from email.mime.text import MIMEText
 from typing import List, Dict, Any
 
@@ -79,13 +80,17 @@ class GmailService:
                     data = msg['payload']['body'].get('data', '')
                     content = base64.urlsafe_b64decode(data).decode() if data else ''
                 
+                # Create timezone-aware datetime
+                timestamp = int(msg['internalDate'])/1000
+                received_date = datetime.fromtimestamp(timestamp).astimezone(pytz.UTC)
+                
                 # Create EmailContent object
                 email = EmailContent(
                     email_id=msg['id'],
                     subject=headers.get('Subject', '(No Subject)'),
                     sender=headers.get('From', 'Unknown Sender'),
                     content=content,
-                    received_date=datetime.fromtimestamp(int(msg['internalDate'])/1000)
+                    received_date=received_date
                 )
                 processed_emails.append(email)
                 print(f"Processed email: {email.subject}...")
@@ -131,13 +136,17 @@ class GmailService:
                 data = message['payload']['body'].get('data', '')
                 content = base64.urlsafe_b64decode(data).decode() if data else ''
             
+            # Create timezone-aware datetime
+            timestamp = int(message['internalDate'])/1000
+            received_date = datetime.fromtimestamp(timestamp).astimezone(pytz.UTC)
+            
             # Create EmailContent object
             email = EmailContent(
                 email_id=message_id,
                 subject=headers.get('Subject', '(No Subject)'),
                 sender=headers.get('From', 'Unknown Sender'),
                 content=content,
-                received_date=datetime.fromtimestamp(int(message['internalDate'])/1000)
+                received_date=received_date
             )
             return email
             

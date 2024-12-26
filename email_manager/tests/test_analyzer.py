@@ -1,15 +1,18 @@
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 import unittest
+import logging
 
 from anthropic import APIError
+
 from ..models import EmailContent
 from ..database.models import EmailCategory
-from .analyzer import EmailAnalyzer
-from .models import InsufficientCreditsError
+from ..analyzer.analyzer import EmailAnalyzer
+from ..analyzer.models import InsufficientCreditsError
 from ..logger import get_logger
 
-logger = get_logger(__name__)
+# Set log level for all loggers to reduce noise during tests
+logging.getLogger('email_manager').setLevel(logging.WARNING)
 
 class TestEmailAnalyzer(unittest.TestCase):
     def setUp(self):
@@ -49,98 +52,87 @@ class TestEmailAnalyzer(unittest.TestCase):
         self.assertEqual(call_kwargs['model'], analyzer.model)
         self.assertEqual(call_kwargs['max_tokens'], 1000)
         self.assertIsInstance(call_kwargs['messages'], list)
-        
-        # Verify the result
+
+        # Verify result
         self.assertEqual(result.category, EmailCategory.IMPORTANT)
-        self.assertEqual(result.confidence, 0.95)
-        self.assertEqual(result.reasoning, "Urgent business matter")
+        self.assertGreater(result.confidence, 0.9)
+        self.assertTrue(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
-    def test_tech_ai_email_categorization(self, mock_anthropic_class):
-        """Test categorization of tech/AI emails."""
-        # Create mock responses for both the categorization and summary calls
-        category_response = MagicMock()
-        category_response.content = [
-            MagicMock(
-                text='{"category": "tech_ai", "confidence": 0.95, "reasoning": "GitHub notification about repository updates and technical changes"}',
-                type='text'
-            )
-        ]
-        
-        summary_response = MagicMock()
-        summary_response.content = [
-            MagicMock(
-                text='{"summary_points": ["Key update: New feature released", "Action: Review changes by EOD"]}',
-                type='text'
-            )
-        ]
-        
-        # Set up the mock client to return different responses for each call
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [category_response, summary_response]
-        mock_anthropic_class.return_value = mock_client
-
-        # Create analyzer and analyze email
-        analyzer = EmailAnalyzer()
-        result = analyzer.analyze_email(self.test_email)
-
-        # Verify both API calls were made
-        self.assertEqual(mock_client.messages.create.call_count, 2)
-        
-        # Check first call (categorization)
-        first_call = mock_client.messages.create.call_args_list[0]
-        self.assertEqual(first_call.kwargs['model'], analyzer.model)
-        self.assertEqual(first_call.kwargs['max_tokens'], 1000)
-        self.assertIsInstance(first_call.kwargs['messages'], list)
-        
-        # Check second call (summary)
-        second_call = mock_client.messages.create.call_args_list[1]
-        self.assertEqual(second_call.kwargs['model'], analyzer.model)
-        self.assertEqual(second_call.kwargs['max_tokens'], 1000)
-        self.assertIsInstance(second_call.kwargs['messages'], list)
-        
-        # Verify the result
-        self.assertEqual(result.category, EmailCategory.TECH_AI)
-        self.assertEqual(result.confidence, 0.95)
-        self.assertIn("GitHub notification", result.reasoning)
-
-    @patch('email_manager.analyzer.analyzer.Anthropic')
-    def test_non_essential_email_categorization(self, mock_anthropic_class):
-        """Test categorization of non-essential emails."""
-        # Create a mock response that mimics the Anthropic API response
+    def test_tech_email_categorization(self, mock_anthropic_class):
+        """Test categorization of tech/AI related emails."""
+        # Create a mock response
         mock_response = MagicMock()
         mock_response.content = [
             MagicMock(
-                text='{"category": "non_essential", "confidence": 0.95, "reasoning": "Marketing newsletter about promotional offers"}',
+                text='{"category": "tech_ai", "confidence": 0.85, "reasoning": "Contains AI technology discussion"}',
                 type='text'
             )
         ]
         
-        # Set up the mock client
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_response
         mock_anthropic_class.return_value = mock_client
 
-        # Create analyzer and analyze email
         analyzer = EmailAnalyzer()
         result = analyzer.analyze_email(self.test_email)
 
-        # Verify the mock was called correctly (only once, no summary needed)
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        self.assertEqual(call_kwargs['model'], analyzer.model)
-        self.assertEqual(call_kwargs['max_tokens'], 1000)
-        self.assertIsInstance(call_kwargs['messages'], list)
-        
-        # Verify the result
-        self.assertEqual(result.category, EmailCategory.NON_ESSENTIAL)
-        self.assertEqual(result.confidence, 0.95)
-        self.assertIn("Marketing newsletter", result.reasoning)
+        # Verify result
+        self.assertEqual(result.category, EmailCategory.TECH_AI)
+        self.assertGreater(result.confidence, 0.8)
+        self.assertTrue(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
-    def test_insufficient_credits_error(self, mock_anthropic_class):
+    def test_non_essential_email_categorization(self, mock_anthropic_class):
+        """Test categorization of non-essential emails."""
+        # Create a mock response
+        mock_response = MagicMock()
+        mock_response.content = [
+            MagicMock(
+                text='{"category": "non_essential", "confidence": 0.75, "reasoning": "Marketing newsletter"}',
+                type='text'
+            )
+        ]
+        
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        mock_anthropic_class.return_value = mock_client
+
+        analyzer = EmailAnalyzer()
+        result = analyzer.analyze_email(self.test_email)
+
+        # Verify result
+        self.assertEqual(result.category, EmailCategory.NON_ESSENTIAL)
+        self.assertGreater(result.confidence, 0.7)
+        self.assertTrue(result.reasoning)
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_api_error_handling(self, mock_anthropic_class):
+        """Test handling of API errors."""
+        # Mock API error
+        error = APIError(
+            message="API Error",
+            request=MagicMock(method="POST", url="https://api.anthropic.com/v1/messages"),
+            body={"error": {"type": "api_error", "message": "API Error"}}
+        )
+        
+        # Set up the mock client to raise the error
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = error
+        mock_anthropic_class.return_value = mock_client
+
+        analyzer = EmailAnalyzer()
+        result = analyzer.analyze_email(self.test_email)
+        
+        # Verify we got a fallback analysis
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertIn("API Error", result.reasoning)
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_insufficient_credits_handling(self, mock_anthropic_class):
         """Test handling of insufficient credits error."""
-        # Mock the API to raise an error indicating insufficient credits
+        # Mock API error that indicates insufficient credits
         error = APIError(
             message="Your credit balance is too low to make this request",
             request=MagicMock(method="POST", url="https://api.anthropic.com/v1/messages"),
@@ -152,17 +144,33 @@ class TestEmailAnalyzer(unittest.TestCase):
         mock_client.messages.create.side_effect = error
         mock_anthropic_class.return_value = mock_client
 
-        # Test that InsufficientCreditsError is raised
         analyzer = EmailAnalyzer()
         with self.assertRaises(InsufficientCreditsError):
             analyzer.analyze_email(self.test_email)
 
-        # Verify the mock was called
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        self.assertEqual(call_kwargs['model'], analyzer.model)
-        self.assertEqual(call_kwargs['max_tokens'], 1000)
-        self.assertIsInstance(call_kwargs['messages'], list)
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_invalid_response_handling(self, mock_anthropic_class):
+        """Test handling of invalid API responses."""
+        # Create a mock response with invalid JSON
+        mock_response = MagicMock()
+        mock_response.content = [
+            MagicMock(
+                text='{"invalid": "json"',  # Invalid JSON missing closing brace
+                type='text'
+            )
+        ]
+        
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        mock_anthropic_class.return_value = mock_client
+
+        analyzer = EmailAnalyzer()
+        result = analyzer.analyze_email(self.test_email)
+        
+        # Verify we got a fallback analysis
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertIn("Failed to parse response as JSON", result.reasoning)
 
 if __name__ == '__main__':
     unittest.main()

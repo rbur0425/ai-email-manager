@@ -106,7 +106,7 @@ class EmailManager:
                     self._handle_important_email(email)
                 
                 # Log successful processing
-                self.db.log_processing(
+                self.db.record_processing(
                     email_id=email.email_id,
                     action="processed",
                     category=analysis.category,
@@ -170,7 +170,7 @@ class EmailManager:
         
         # Store in tech content archive
         logger.debug(f"Attempting to store tech content for email {email.email_id}")
-        stored = self.db.store_tech_content(
+        stored = self.db.archive_tech_content(
             email_id=email.email_id,
             subject=email.subject,
             sender=email.sender,
@@ -216,7 +216,7 @@ class EmailManager:
         logger.error(f"Failed to process email {email.email_id} after all retries: {error_message}")
         
         # Log the failure
-        self.db.log_processing(
+        self.db.record_processing(
             email_id=email.email_id,
             action="failed",
             category=EmailCategory.IMPORTANT,  # Default to important on failure
