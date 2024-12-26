@@ -36,7 +36,7 @@ Example 2:
 }}"""
 
 def get_summary_prompt(email: EmailContent) -> str:
-    return f"""Generate a concise summary of this technical/AI-related email:
+    return f"""Generate a concise 1-9 bullet point summary of this technical/AI-related email:
 
 Subject: {email.subject}
 From: {email.sender}
@@ -53,7 +53,10 @@ IMPORTANT: Respond with ONLY a single JSON object and NO additional text. The JS
     "summary_points": [
         "Point 1 about key updates",
         "Point 2 about technical changes",
-        "Point 3 about action items"
+        "Point 3 about action items",
+        "Point 4 about deadlines",
+        "Point 5 about links",
+        "Point 6 about resources"
     ]
 }}
 
