@@ -120,6 +120,7 @@ class TestDatabaseManager(unittest.TestCase):
         success = True
         error_message = None
         confidence = 0.95
+        reasoning = "This is a promotional email"
 
         with self.db_manager.get_session() as session:
             history = self.db_manager.add_processing_history(
@@ -129,7 +130,8 @@ class TestDatabaseManager(unittest.TestCase):
                 confidence=confidence,
                 success=success,
                 error_message=error_message,
-                session=session
+                session=session,
+                reasoning=reasoning
             )
             session.commit()
 

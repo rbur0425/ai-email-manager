@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS processing_history (
     category emailcategory NOT NULL,
     confidence FLOAT NOT NULL DEFAULT 0.0,  -- Confidence score from analysis
     success BOOLEAN NOT NULL,
-    error_message TEXT
+    error_message TEXT,  -- For storing error details
+    reasoning TEXT  -- For storing analyzer reasoning
 );
 
 -- Create indexes for better query performance

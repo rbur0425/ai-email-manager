@@ -193,3 +193,74 @@ class EmailAnalyzer:
         except Exception as e:
             logger.error(f"Error parsing response: {str(e)}")
             return None
+
+    def generate_summary(self, email: EmailContent) -> Optional[str]:
+        """Generate a summary for a tech/AI email using Claude.
+        
+        Args:
+            email: The email to summarize
+            
+        Returns:
+            A string containing bullet points summarizing the email content,
+            or None if summary generation fails
+            
+        Raises:
+            ClaudeAPIError: If there's an error calling the Claude API
+            InsufficientCreditsError: If API credits are exhausted
+        """
+        try:
+            # If credits are already known to be exhausted, fail fast
+            if self._credits_exhausted:
+                logger.error("Credits already exhausted, failing fast")
+                raise InsufficientCreditsError("Claude API credits are exhausted")
+
+            # Get summary
+            summary_prompt = get_summary_prompt(email)
+            logger.debug(f"Sending summary prompt: {summary_prompt}")
+            
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[{"role": "user", "content": summary_prompt}]
+            )
+            
+            # Debug log the raw response
+            logger.debug(f"Raw summary response type: {type(response)}")
+            logger.debug(f"Raw summary response: {response}")
+            
+            # Get the first message content
+            response_text = response.content[0].text if isinstance(response.content, list) else response.content
+            logger.debug(f"Extracted summary text: {response_text}")
+            
+            # Parse summary response
+            try:
+                data = json.loads(response_text)
+                if not isinstance(data, dict) or "summary_points" not in data:
+                    logger.error("Invalid summary response format")
+                    return None
+                    
+                # Join bullet points with newlines
+                summary = "\n".join(f"• {point}" for point in data["summary_points"])
+                return summary
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse summary JSON response: {str(e)}")
+                return None
+                
+        except APIError as e:
+            error_message = str(e)
+            
+            # Check for insufficient credits error
+            if 'credit balance is too low' in error_message.lower():
+                self._credits_exhausted = True
+                logger.error("Claude API credits exhausted. Please recharge your account.")
+                raise InsufficientCreditsError("Claude API credits are exhausted") from e
+            
+            # Handle other API errors
+            logger.error(f"Claude API error generating summary: {error_message}")
+            raise ClaudeAPIError(f"Failed to generate summary: {error_message}") from e
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error generating summary: {error_msg}")
+            raise ClaudeAPIError(f"Failed to generate summary: {error_msg}") from e

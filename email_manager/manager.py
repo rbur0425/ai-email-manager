@@ -90,6 +90,7 @@ class EmailManager:
             EmailProcessingError: If processing fails after all retries
         """
         retries = 0
+        error_msg = None
         while retries < max_retries:
             try:
                 logger.debug(f"Processing attempt {retries + 1} for email {email.email_id}")
@@ -111,19 +112,20 @@ class EmailManager:
                     action="processed",
                     category=analysis.category,
                     confidence=analysis.confidence,
-                    success=True
+                    success=True,
+                    reasoning=analysis.reasoning
                 )
-                logger.debug(f"Logged processing with category: {analysis.category}, type: {type(analysis.category)}, value: {analysis.category.value}")
                 logger.debug(f"Successfully processed email {email.email_id} on attempt {retries + 1}")
                 break  # Success, exit retry loop
                 
             except Exception as e:
+                error_msg = str(e)
                 retries += 1
-                logger.warning(f"Attempt {retries} failed for email {email.email_id}: {str(e)}")
+                logger.warning(f"Attempt {retries} failed for email {email.email_id}: {error_msg}")
                 if retries == max_retries:
                     logger.error(f"All {max_retries} attempts failed for email {email.email_id}")
-                    self._handle_processing_failure(email, str(e))
-                    raise EmailProcessingError(f"Failed to process email after {max_retries} attempts: {str(e)}")
+                    self._handle_processing_failure(email, error_msg)
+                    raise EmailProcessingError(f"Failed to process email after {max_retries} attempts: {error_msg}")
                 else:
                     time.sleep(2 ** retries)  # Exponential backoff
     
@@ -162,12 +164,21 @@ class EmailManager:
         
         Args:
             email: Email to process
-            analysis: Analysis results containing summary
+            analysis: Analysis results
             
         Raises:
             EmailProcessingError: If archiving or trash operation fails
         """
         logger.info(f"Processing tech email: {email.email_id}")
+        
+        # Generate summary for tech content
+        try:
+            summary = self.analyzer.generate_summary(email)
+            logger.debug(f"Generated summary for tech email: {summary}")
+            if summary is None:
+                raise EmailProcessingError("Failed to generate summary for tech email")
+        except (ClaudeAPIError, InsufficientCreditsError) as e:
+            raise EmailProcessingError(f"Failed to generate summary: {str(e)}")
         
         # Store in tech content archive
         logger.debug(f"Attempting to store tech content for email {email.email_id}")
@@ -176,7 +187,7 @@ class EmailManager:
             subject=email.subject,
             sender=email.sender,
             content=email.content,
-            summary=analysis.summary,
+            summary=summary,
             received_date=email.received_date,
             category=EmailCategory.TECH_AI
         )
@@ -223,7 +234,8 @@ class EmailManager:
             category=EmailCategory.IMPORTANT,  # Default to important on failure
             confidence=0.0,  # Zero confidence for failures
             success=False,
-            error_message=error_message
+            error_message=error_message,
+            reasoning="Failed to process email"
         )
         
         # Mark as unread so it can be processed in next batch

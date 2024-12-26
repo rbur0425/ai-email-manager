@@ -62,6 +62,7 @@ class ProcessingHistory(Base):
     confidence = Column(Float, nullable=False, default=0.0)  # New column for confidence score
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
+    reasoning = Column(Text)
 
     def __repr__(self):
         return f"<ProcessingHistory(email_id='{self.email_id}', action='{self.action}', confidence={self.confidence}, success={self.success})>"

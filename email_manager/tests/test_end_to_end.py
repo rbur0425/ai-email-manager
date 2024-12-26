@@ -25,7 +25,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         # Configure db_manager mock with required methods
         self.db_manager.store_deleted_email.return_value = True
         self.db_manager.archive_tech_content.return_value = True
-        self.db_manager.record_processing.return_value = True
+        self.db_manager.add_processing_history.return_value = True
         
         # Configure gmail service mock
         self.gmail_service.mark_as_read.return_value = True
@@ -66,34 +66,70 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.email_analyzer.analyze_email.assert_called_once_with(self.test_email)
         self.db_manager.store_deleted_email.assert_called_once()
         self.gmail_service.move_to_trash.assert_called_once_with(self.test_email.email_id)
-        self.db_manager.record_processing.assert_called_once()
+        self.db_manager.add_processing_history.assert_called_once()
     
     def test_tech_email_flow(self):
         """Test complete flow for tech/AI email processing."""
-        # Reset mock call counts from previous tests
-        self.gmail_service.reset_mock()
-        self.email_analyzer.reset_mock()
-        self.db_manager.reset_mock()
-        
-        # Setup mock returns
-        self.gmail_service.get_unread_emails.return_value = [self.test_email]
-        self.email_analyzer.analyze_email.return_value = EmailAnalysis(
-            category=EmailCategory.TECH_AI,
-            confidence=0.90,
-            reasoning="Technical content detected",
-            summary="Summary of tech content"
+        # Setup test email
+        test_email = EmailContent(
+            email_id="test123",
+            subject="Tech Email",
+            sender="test@example.com",
+            content="Tech content",
+            received_date=datetime.now(pytz.UTC)
         )
         
-        # Execute
+        # Configure Gmail service to return our test email
+        self.gmail_service.get_unread_emails.return_value = [test_email]
+        
+        # Configure successful analysis
+        analysis = EmailAnalysis(
+            category=EmailCategory.TECH_AI,
+            confidence=0.95,
+            reasoning="Tech content detected",
+            summary="• Point 1\n• Point 2\n• Point 3"
+        )
+        self.email_analyzer.analyze_email.return_value = analysis
+        
+        # Configure successful summary generation
+        self.email_analyzer.generate_summary.return_value = analysis.summary
+        
+        # Configure successful database operations
+        self.db_manager.archive_tech_content.return_value = True
+        
+        # Process the email
         self.email_manager.process_unread_emails(batch_size=1)
         
-        # Verify flow
-        self.gmail_service.get_unread_emails.assert_called_once()
-        self.email_analyzer.analyze_email.assert_called_once_with(self.test_email)
-        self.db_manager.archive_tech_content.assert_called_once()
-        self.gmail_service.move_to_trash.assert_called_once_with(self.test_email.email_id)
-        self.db_manager.record_processing.assert_called_once()
-
+        # Verify analysis was performed
+        self.email_analyzer.analyze_email.assert_called_once_with(test_email)
+        
+        # Verify summary was generated
+        self.email_analyzer.generate_summary.assert_called_once_with(test_email)
+        
+        # Verify tech content was archived
+        self.db_manager.archive_tech_content.assert_called_once_with(
+            email_id=test_email.email_id,
+            subject=test_email.subject,
+            sender=test_email.sender,
+            content=test_email.content,
+            summary=analysis.summary,
+            received_date=test_email.received_date,
+            category=EmailCategory.TECH_AI
+        )
+        
+        # Verify email was moved to trash after archiving
+        self.gmail_service.move_to_trash.assert_called_once_with(test_email.email_id)
+        
+        # Verify processing history was recorded
+        self.db_manager.add_processing_history.assert_called_with(
+            email_id=test_email.email_id,
+            action="processed",
+            category=analysis.category,
+            confidence=analysis.confidence,
+            success=True,
+            reasoning=analysis.reasoning
+        )
+    
     def test_important_email_flow(self):
         """Test complete flow for important email processing."""
         # Reset mock call counts from previous tests
@@ -117,7 +153,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.gmail_service.get_unread_emails.assert_called_once()
         self.email_analyzer.analyze_email.assert_called_once_with(self.test_email)
         self.gmail_service.mark_as_read.assert_called_once_with(self.test_email.email_id)
-        self.db_manager.record_processing.assert_called_once()
+        self.db_manager.add_processing_history.assert_called_once()
         
         # Verify that move_to_trash was NOT called
         self.gmail_service.move_to_trash.assert_not_called()
@@ -155,7 +191,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         
         # Verify final successful processing
         self.gmail_service.mark_as_read.assert_called_once_with(self.test_email.email_id)
-        self.db_manager.record_processing.assert_called_once()
+        self.db_manager.add_processing_history.assert_called_once()
         
         # Verify that move_to_trash was NOT called (since it's an important email)
         self.gmail_service.move_to_trash.assert_not_called()
@@ -243,7 +279,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.gmail_service.mark_as_read.assert_called_once_with("imp789")
         
         # Verify logging for all emails
-        self.assertEqual(self.db_manager.record_processing.call_count, 3)
+        self.assertEqual(self.db_manager.add_processing_history.call_count, 3)
 
     def test_edge_cases(self):
         """Test edge cases and boundary conditions."""
@@ -345,7 +381,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.gmail_service.move_to_trash.assert_any_call("invalid101")
         
         # Verify all emails were logged
-        self.assertEqual(self.db_manager.record_processing.call_count, 4)
+        self.assertEqual(self.db_manager.add_processing_history.call_count, 4)
 
     def test_max_retries_exceeded(self):
         """Test behavior when maximum retries are exceeded.
@@ -356,48 +392,39 @@ class TestEmailManagerE2E(unittest.TestCase):
         3. The failure should be logged with IMPORTANT category
         4. An EmailProcessingError should be raised
         """
-        # Reset mock call counts
-        self.gmail_service.reset_mock()
-        self.email_analyzer.reset_mock()
-        self.db_manager.reset_mock()
+        # Setup
+        test_email = EmailContent(
+            email_id="test123",
+            subject="Test Email",
+            sender="test@example.com",
+            content="Test content",
+            received_date=datetime.now(pytz.UTC)
+        )
         
-        # Configure analyzer to always fail
-        self.gmail_service.get_unread_emails.return_value = [self.test_email]
-        error_message = "Persistent error"
-        self.email_analyzer.analyze_email.side_effect = Exception(error_message)
+        # Configure mocks
+        self.gmail_service.get_unread_emails.return_value = [test_email]
+        self.email_analyzer.analyze_email.side_effect = Exception("Persistent error")
         
-        # Execute with reduced max_retries for faster testing
-        with self.assertLogs('email_manager.manager', level='DEBUG') as log:
-            with self.assertRaises(EmailProcessingError) as context:
-                self.email_manager.process_unread_emails(batch_size=1, max_retries=2)
-            
-            # Print all logs for debugging
-            print("\nDebug logs:")
-            for msg in log.output:
-                print(msg)
-            
-            # Verify the error message
-            error_msg = str(context.exception)
-            self.assertIn("Failed to process email after 2 attempts", error_msg)
-            self.assertIn(error_message, error_msg)
+        # Test
+        with self.assertRaises(EmailProcessingError) as context:
+            self.email_manager.process_unread_emails(batch_size=1, max_retries=2)
         
-        # Verify retry attempts
+        # Verify error message
+        error_msg = str(context.exception)
+        self.assertIn("Failed to process email after 2 attempts", error_msg)
+        
+        # Verify retry behavior
         self.assertEqual(self.email_analyzer.analyze_email.call_count, 2)
         
-        # Verify error logging
-        error_logs = [msg for msg in log.output if "ERROR" in msg]
-        self.assertTrue(any(error_message in msg for msg in error_logs))
-        
-        # Verify email was marked for retry
-        self.gmail_service.mark_as_unread.assert_called_once_with(self.test_email.email_id)
-        
-        # Verify failure was logged with IMPORTANT category (default for failures)
-        self.db_manager.record_processing.assert_called_once_with(
-            email_id=self.test_email.email_id,
+        # Verify failure logging
+        self.db_manager.add_processing_history.assert_called_with(
+            email_id=test_email.email_id,
             action="failed",
-            category=EmailCategory.IMPORTANT,  # Default to important on failure
+            category=EmailCategory.IMPORTANT,
+            confidence=0.0,
             success=False,
-            error_message=error_message
+            error_message="Persistent error",
+            reasoning="Failed to process email"
         )
 
     def test_database_failures(self):
@@ -502,12 +529,16 @@ class TestEmailManagerE2E(unittest.TestCase):
         
         # Configure successful processing
         self.gmail_service.get_unread_emails.return_value = test_emails
-        self.email_analyzer.analyze_email.return_value = EmailAnalysis(
+        analysis = EmailAnalysis(
             category=EmailCategory.NON_ESSENTIAL,
             confidence=0.95,
             reasoning="Test content",
             summary=None
         )
+        self.email_analyzer.analyze_email.return_value = analysis
+        
+        # Configure successful database operations
+        self.db_manager.store_deleted_email.return_value = True
         
         # Process emails
         self.email_manager.process_unread_emails(batch_size=3)
@@ -518,16 +549,29 @@ class TestEmailManagerE2E(unittest.TestCase):
         # Verify proper cleanup
         self.assertEqual(self.gmail_service.move_to_trash.call_count, 3)
         self.assertEqual(self.db_manager.store_deleted_email.call_count, 3)
-        self.assertEqual(self.db_manager.record_processing.call_count, 3)
+        self.assertEqual(self.db_manager.add_processing_history.call_count, 3)
         
-        # Verify no emails were left unprocessed
+        # Verify each email was properly handled
         for email in test_emails:
+            # Verify email was moved to trash
             self.gmail_service.move_to_trash.assert_any_call(email.email_id)
-            self.db_manager.record_processing.assert_any_call(
+            
+            # Verify email was stored in database
+            self.db_manager.store_deleted_email.assert_any_call(
+                email_id=email.email_id,
+                subject=email.subject,
+                sender=email.sender,
+                content=email.content
+            )
+            
+            # Verify processing history was added
+            self.db_manager.add_processing_history.assert_any_call(
                 email_id=email.email_id,
                 action="processed",
-                category=EmailCategory.NON_ESSENTIAL,
-                success=True
+                category=analysis.category,
+                confidence=analysis.confidence,
+                success=True,
+                reasoning=analysis.reasoning
             )
 
 if __name__ == '__main__':

@@ -142,7 +142,8 @@ class DatabaseManager:
         confidence: float,
         success: bool = True,
         error_message: Optional[str] = None,
-        session: Optional[Session] = None
+        session: Optional[Session] = None,
+        reasoning: Optional[str] = None
     ) -> ProcessingHistory:
         """Add a record to processing history."""
         history = ProcessingHistory(
@@ -151,7 +152,8 @@ class DatabaseManager:
             category=category,
             confidence=confidence,
             success=success,
-            error_message=error_message
+            error_message=error_message,
+            reasoning=reasoning
         )
         
         if session is None:
