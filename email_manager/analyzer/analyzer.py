@@ -11,15 +11,28 @@ from ..models import EmailAnalysis, EmailContent
 from ..database.models import EmailCategory
 from .models import ClaudeAPIError, InsufficientCreditsError
 from .prompts import get_analysis_prompt, get_summary_prompt
+from ..database.manager import DatabaseManager  # Import DatabaseManager
 
 logger = get_logger(__name__)
 logger.setLevel(logging.DEBUG)  # Set logger level to DEBUG
 
 class EmailAnalyzer:
-    def __init__(self):
-        self.client = Anthropic(api_key=config.claude.api_key)
+    """Analyzes emails using Claude API to determine category and generate summaries."""
+
+    def __init__(self, claude_client: Optional[Anthropic] = None, db_manager: Optional[DatabaseManager] = None):
+        """Initialize the analyzer with optional Claude client and database manager."""
+        if claude_client:
+            self.client = claude_client
+        else:
+            self.client = Anthropic(api_key=config.claude.api_key)
+            
         self.model = config.claude.model
         self._credits_exhausted = False
+        
+        if db_manager:
+            self.db_manager = db_manager
+        else:
+            self.db_manager = DatabaseManager()
 
     def analyze_email(self, email: EmailContent) -> EmailAnalysis:
         """Analyze email content using Claude to determine category and generate summary if needed."""
@@ -51,49 +64,34 @@ class EmailAnalyzer:
             
             # Parse analysis response
             analysis = self._parse_analysis_response(response_text)
-            
-            # If tech/AI related, generate summary
-            if analysis.category == EmailCategory.TECH_AI:
-                summary_prompt = get_summary_prompt(email)
-                logger.debug(f"Sending summary prompt: {summary_prompt}")
-                summary_response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=1000,
-                    messages=[{"role": "user", "content": summary_prompt}]
+            if analysis:
+                # Record successful analysis
+                self.db_manager.add_processing_history(
+                    email_id=email.email_id,
+                    action="analyzed",
+                    category=analysis.category,
+                    confidence=analysis.confidence,
+                    success=True
                 )
-                
-                try:
-                    summary_text = summary_response.content[0].text if isinstance(summary_response.content, list) else summary_response.content
-                    logger.debug(f"Summary response type: {type(summary_text)}")
-                    logger.debug(f"Summary text: {summary_text}")
-                    
-                    # Handle TextBlock objects
-                    if hasattr(summary_text, 'text'):
-                        summary_text = summary_text.text
-                        
-                    try:
-                        summary_data = json.loads(summary_text)
-                        analysis.summary = "\n".join(summary_data.get("summary_points", []))
-                    except json.JSONDecodeError:
-                        # If not JSON, use the text directly but format it nicely
-                        if isinstance(summary_text, str):
-                            # Try to extract bullet points if present
-                            points = [line.strip() for line in summary_text.split('\n') if line.strip().startswith('-')]
-                            if points:
-                                analysis.summary = "\n".join(points)
-                            else:
-                                analysis.summary = summary_text
-                        else:
-                            analysis.summary = str(summary_text)
-                            
-                except Exception as e:
-                    logger.error(f"Error processing summary: {e}")
-                    if hasattr(summary_response.content, 'text'):
-                        analysis.summary = summary_response.content.text
-                    else:
-                        analysis.summary = str(summary_response.content)
-
-            return analysis
+                return analysis
+            
+            # If parsing failed, return default result
+            error_result = EmailAnalysis(
+                category=EmailCategory.IMPORTANT,
+                confidence=0.0,
+                reasoning="Failed to parse response as JSON"
+            )
+            
+            # Record failed analysis
+            self.db_manager.add_processing_history(
+                email_id=email.email_id,
+                action="analyzed",
+                category=error_result.category,
+                confidence=error_result.confidence,
+                success=False,
+                error_message=error_result.reasoning
+            )
+            return error_result
             
         except APIError as e:
             error_message = str(e)
@@ -106,29 +104,53 @@ class EmailAnalyzer:
             
             # Handle other API errors
             logger.error(f"Claude API error: {error_message}")
-            return self._create_fallback_analysis(f"API Error: {error_message}")
+            error_result = EmailAnalysis(
+                category=EmailCategory.IMPORTANT,
+                confidence=0.0,
+                reasoning=f"API Error: {error_message}"
+            )
             
-        except APIConnectionError as e:
-            logger.error(f"Connection error with Claude API: {str(e)}")
-            return self._create_fallback_analysis("Connection error with Claude API")
-            
-        except RateLimitError as e:
-            logger.error(f"Rate limit exceeded: {str(e)}")
-            return self._create_fallback_analysis("Rate limit exceeded, please try again later")
+            try:
+                # Try to record the error
+                self.db_manager.add_processing_history(
+                    email_id=email.email_id,
+                    action="analyzed",
+                    category=error_result.category,
+                    confidence=error_result.confidence,
+                    success=False,
+                    error_message=error_result.reasoning
+                )
+            except Exception as db_error:
+                logger.error(f"Failed to record analysis error: {db_error}")
+                
+            return error_result
             
         except Exception as e:
-            logger.error(f"Error analyzing email: {str(e)}")
-            return self._create_fallback_analysis(f"Error during analysis: {str(e)}")
+            error_msg = str(e)
+            logger.error(f"Error analyzing email: {error_msg}")
+            
+            error_result = EmailAnalysis(
+                category=EmailCategory.IMPORTANT,
+                confidence=0.0,
+                reasoning=f"Error during analysis: {error_msg}"
+            )
+            
+            try:
+                # Try to record the error
+                self.db_manager.add_processing_history(
+                    email_id=email.email_id,
+                    action="analyzed",
+                    category=error_result.category,
+                    confidence=error_result.confidence,
+                    success=False,
+                    error_message=error_msg
+                )
+            except Exception as db_error:
+                logger.error(f"Failed to record analysis error: {db_error}")
+                
+            return error_result
 
-    def _create_fallback_analysis(self, reason: str) -> EmailAnalysis:
-        """Create a fallback analysis when errors occur."""
-        return EmailAnalysis(
-            category=EmailCategory.IMPORTANT,  # Default to important to avoid missing critical emails
-            confidence=0.0,
-            reasoning=reason
-        )
-
-    def _parse_analysis_response(self, response: str) -> EmailAnalysis:
+    def _parse_analysis_response(self, response: str) -> Optional[EmailAnalysis]:
         """Parse Claude's JSON response into EmailAnalysis object."""
         try:
             logger.debug(f"Starting to parse response: {response}")
@@ -140,46 +162,34 @@ class EmailAnalyzer:
             # Validate required fields
             if not isinstance(data, dict):
                 logger.error("Response is not a JSON object")
-                raise ValueError("Response is not a JSON object")
+                return None
                 
             if "category" not in data or "confidence" not in data or "reasoning" not in data:
                 logger.error(f"Missing required fields in JSON response. Available fields: {data.keys()}")
-                raise ValueError("Missing required fields in JSON response")
+                return None
                 
             # Convert category string to enum
             try:
-                logger.debug(f"Raw category from Claude: {data['category']}")
-                category = EmailCategory(data["category"].upper())
-                logger.debug(f"Converted to enum: {category}, type: {type(category)}, value: {category.value}")
-            except ValueError:
-                logger.error(f"Invalid category value: {data['category']}")
-                category = EmailCategory.IMPORTANT
+                category = EmailCategory[data["category"].upper()]
+            except KeyError:
+                logger.error(f"Invalid category from Claude: {data['category']}")
+                return None
                 
-            # Validate confidence is float between 0 and 1
-            try:
-                confidence = float(data["confidence"])
-                confidence = max(0.0, min(1.0, confidence))  # Clamp between 0 and 1
-                logger.debug(f"Parsed confidence: {confidence}")
-            except (ValueError, TypeError) as e:
-                logger.error(f"Invalid confidence value: {data.get('confidence')}, error: {e}")
-                confidence = 0.0
-                
-            # Get reasoning
-            reasoning = str(data.get("reasoning", "No reasoning provided"))
-            logger.debug(f"Parsed reasoning: {reasoning}")
-
+            # Extract confidence and reasoning
+            confidence = float(data.get("confidence", 0.0))
+            reasoning = data.get("reasoning", "")
+            
             return EmailAnalysis(
                 category=category,
                 confidence=confidence,
                 reasoning=reasoning
             )
-
+            
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
+            logger.error(f"Failed to parse JSON response: {str(e)}")
             logger.debug(f"Raw response: {response}")
-            return self._create_fallback_analysis("Failed to parse response as JSON")
+            return None
             
         except Exception as e:
-            logger.error(f"Error parsing analysis response: {str(e)}")
-            logger.debug(f"Raw response: {response}")
-            return self._create_fallback_analysis(f"Error parsing analysis: {str(e)}")
+            logger.error(f"Error parsing response: {str(e)}")
+            return None

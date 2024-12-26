@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, String, Text, DateTime, Boolean, Enum as SQLAlchemyEnum, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Boolean, Enum as SQLAlchemyEnum, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -59,8 +59,9 @@ class ProcessingHistory(Base):
     processing_date = Column(DateTime(timezone=True), default=datetime.utcnow)
     action = Column(String(50), nullable=False)  # 'deleted', 'archived', 'marked_read'
     category = Column(SQLAlchemyEnum(EmailCategory), nullable=False)
+    confidence = Column(Float, nullable=False, default=0.0)  # New column for confidence score
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
 
     def __repr__(self):
-        return f"<ProcessingHistory(email_id='{self.email_id}', action='{self.action}', success={self.success})>"
+        return f"<ProcessingHistory(email_id='{self.email_id}', action='{self.action}', confidence={self.confidence}, success={self.success})>"

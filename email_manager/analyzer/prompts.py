@@ -9,8 +9,8 @@ Content: {email.content}
 
 Categorize this email into one of these categories:
 1. non_essential: Advertisements, promotions, newsletters without significant tech content
-2. tech_ai: Technical or AI-related content, including tech newsletters, GitHub notifications, API updates
-3. important: Other important emails that need attention like bills, receipts, registrations, reminders, etc.
+2. tech_ai: Technical or AI-related content, including tech newsletters, marketing newsletters, GitHub notifications, API updates
+3. important: Other important emails that need attention like bills, receipts, registrations, reminders, appointments, etc.
 
 IMPORTANT: Respond with ONLY a single JSON object and NO additional text. The JSON must have exactly this structure:
 {{

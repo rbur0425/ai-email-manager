@@ -134,37 +134,35 @@ class DatabaseManager:
             session.flush()  # Ensure the record is created and id is available
             return record_id
 
-    def record_processing(self, email_id: str, action: str, category: EmailCategory, 
-                         success: bool, error_message: Optional[str] = None) -> UUID:
-        """Record an email processing action in the history
-        
-        Args:
-            email_id: Unique identifier of the email
-            action: Action taken ('deleted', 'archived', 'marked_read')
-            category: Email category
-            success: Whether the action was successful
-            error_message: Optional error message if action failed
-            
-        Returns:
-            UUID of the created record
-            
-        Raises:
-            SQLAlchemyError: If there's a database error
-        """
-        record_id = uuid4()
-        history_record = ProcessingHistory(
-            id=record_id,
+    def add_processing_history(
+        self, 
+        email_id: str, 
+        action: str, 
+        category: EmailCategory,
+        confidence: float,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        session: Optional[Session] = None
+    ) -> ProcessingHistory:
+        """Add a record to processing history."""
+        history = ProcessingHistory(
             email_id=email_id,
             action=action,
             category=category,
+            confidence=confidence,
             success=success,
             error_message=error_message
         )
         
-        with self.get_session() as session:
-            session.add(history_record)
-            session.flush()  # Ensure the record is created and id is available
-            return record_id
+        if session is None:
+            with self.get_session() as session:
+                session.add(history)
+                session.commit()
+                return session.query(ProcessingHistory).filter_by(id=history.id).first()
+        else:
+            session.add(history)
+            session.flush()  # Flush to get the ID but don't commit yet
+            return history
 
     def get_tech_content(self, email_id: str) -> Optional[TechContent]:
         """Retrieve archived tech content by email ID

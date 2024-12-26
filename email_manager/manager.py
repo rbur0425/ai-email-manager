@@ -106,10 +106,11 @@ class EmailManager:
                     self._handle_important_email(email)
                 
                 # Log successful processing
-                self.db.record_processing(
+                self.db.add_processing_history(
                     email_id=email.email_id,
                     action="processed",
                     category=analysis.category,
+                    confidence=analysis.confidence,
                     success=True
                 )
                 logger.debug(f"Logged processing with category: {analysis.category}, type: {type(analysis.category)}, value: {analysis.category.value}")
@@ -216,10 +217,11 @@ class EmailManager:
         logger.error(f"Failed to process email {email.email_id} after all retries: {error_message}")
         
         # Log the failure
-        self.db.record_processing(
+        self.db.add_processing_history(
             email_id=email.email_id,
             action="failed",
             category=EmailCategory.IMPORTANT,  # Default to important on failure
+            confidence=0.0,  # Zero confidence for failures
             success=False,
             error_message=error_message
         )

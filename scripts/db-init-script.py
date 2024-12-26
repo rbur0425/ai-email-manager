@@ -34,13 +34,8 @@ def init_database():
         
         # Create engine and database manager
         engine = create_engine(connection_string)
-        db_manager = DatabaseManager()
         
-        # Clear existing tables
-        logger.info("Clearing existing tables...")
-        db_manager.clear_tables()
-        
-        # Read SQL script
+        # Read SQL script first
         sql_path = Path(__file__).parent / 'db-init.sql'
         if not sql_path.exists():
             logger.error(f"SQL script not found at {sql_path}")
@@ -49,20 +44,25 @@ def init_database():
         with open(sql_path, 'r') as f:
             sql_script = f.read()
         
-        # Execute script
+        # Execute SQL script to create tables
+        logger.info("Creating database tables...")
         with engine.connect() as conn:
-            logger.info("Creating database tables...")
             conn.execute(text(sql_script))
             conn.commit()
+            
+        # Now initialize DatabaseManager and clear tables
+        db_manager = DatabaseManager()
+        logger.info("Clearing existing tables...")
+        db_manager.clear_tables()
         
-        logger.info("Database tables initialized successfully!")
+        logger.info("Database initialization completed successfully")
         return True
         
     except SQLAlchemyError as e:
-        logger.error(f"Database error: {str(e)}")
+        logger.error(f"Database error: {e}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error: {e}")
         return False
 
 if __name__ == '__main__':

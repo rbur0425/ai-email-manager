@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS processing_history (
     processing_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     action VARCHAR(50) NOT NULL,  -- 'deleted', 'archived', 'marked_read'
     category emailcategory NOT NULL,
+    confidence FLOAT NOT NULL DEFAULT 0.0,  -- Confidence score from analysis
     success BOOLEAN NOT NULL,
     error_message TEXT
 );

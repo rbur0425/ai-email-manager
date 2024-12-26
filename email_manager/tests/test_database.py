@@ -105,55 +105,132 @@ class TestDatabaseManager(unittest.TestCase):
         )
 
         # Retrieve and verify
-        tech_content = self.db_manager.get_tech_content(email_id)
-        self.assertIsNotNone(tech_content)
-        self.assertEqual(tech_content.email_id, email_id)
-        self.assertEqual(tech_content.subject, subject)
-        self.assertEqual(tech_content.content, content)
+        with self.db_manager.get_session() as session:
+            tech_content = session.query(TechContent).filter_by(email_id=email_id).first()
+            self.assertIsNotNone(tech_content)
+            self.assertEqual(tech_content.email_id, email_id)
+            self.assertEqual(tech_content.subject, subject)
+            self.assertEqual(tech_content.content, content)
 
     def test_record_processing(self):
         """Test recording email processing history"""
-        email_id = "process123"
+        email_id = "test123"
         action = "deleted"
         category = EmailCategory.NON_ESSENTIAL
         success = True
         error_message = None
+        confidence = 0.95
 
-        # Record processing
-        self.db_manager.record_processing(email_id, action, category, success, error_message)
-
-        # Verify record
         with self.db_manager.get_session() as session:
-            history = session.query(ProcessingHistory).filter_by(email_id=email_id).first()
-            self.assertIsNotNone(history)
+            history = self.db_manager.add_processing_history(
+                email_id=email_id,
+                action=action,
+                category=category,
+                confidence=confidence,
+                success=success,
+                error_message=error_message,
+                session=session
+            )
+            session.commit()
+
+            self.assertEqual(history.email_id, email_id)
             self.assertEqual(history.action, action)
             self.assertEqual(history.category, category)
+            self.assertEqual(history.confidence, confidence)
             self.assertEqual(history.success, success)
             self.assertEqual(history.error_message, error_message)
 
     def test_get_processing_history(self):
         """Test retrieving email processing history"""
-        # First create some history
-        email_id = "history123"
-        action = "archived"
-        category = EmailCategory.TECH_AI
+        email_id = "test123"
+        action = "deleted"
+        category = EmailCategory.NON_ESSENTIAL
         success = True
         error_message = None
 
-        self.db_manager.record_processing(email_id, action, category, success, error_message)
+        # Add processing history
+        with self.db_manager.get_session() as session:
+            self.db_manager.add_processing_history(
+                email_id=email_id,
+                action=action,
+                category=category,
+                confidence=0.95,
+                success=success,
+                error_message=error_message,
+                session=session
+            )
+            session.commit()
 
-        # Retrieve and verify
-        history = self.db_manager.get_processing_history(email_id)
-        self.assertTrue(len(history) > 0)
-        latest_record = history[0]
-        self.assertEqual(latest_record.email_id, email_id)
-        self.assertEqual(latest_record.action, action)
-        self.assertEqual(latest_record.category, category)
+        # Get history
+        with self.db_manager.get_session() as session:
+            history = session.query(ProcessingHistory).filter_by(email_id=email_id).all()
+            self.assertIsNotNone(history)
+            self.assertEqual(len(history), 1)
+            latest_record = history[0]
+            self.assertEqual(latest_record.email_id, email_id)
+            self.assertEqual(latest_record.action, action)
+            self.assertEqual(latest_record.category, category)
+
+    def test_add_processing_history(self):
+        """Test adding processing history."""
+        email_id = "test123"
+        action = "analyzed"
+        category = EmailCategory.TECH_AI
+        confidence = 0.95
+        success = True
+
+        with self.db_manager.get_session() as session:
+            history = self.db_manager.add_processing_history(
+                email_id=email_id,
+                action=action,
+                category=category,
+                confidence=confidence,
+                success=success,
+                session=session
+            )
+            session.commit()
+            
+            # Test within the session context
+            self.assertEqual(history.email_id, email_id)
+            self.assertEqual(history.action, action)
+            self.assertEqual(history.category, category)
+            self.assertEqual(history.confidence, confidence)
+            self.assertEqual(history.success, success)
+            self.assertIsNone(history.error_message)
+
+    def test_add_processing_history_with_error(self):
+        """Test adding processing history with error."""
+        email_id = "test123"
+        action = "analyzed"
+        category = EmailCategory.TECH_AI
+        confidence = 0.0  # Low confidence for error case
+        success = False
+        error_message = "Analysis failed"
+
+        with self.db_manager.get_session() as session:
+            history = self.db_manager.add_processing_history(
+                email_id=email_id,
+                action=action,
+                category=category,
+                confidence=confidence,
+                success=success,
+                error_message=error_message,
+                session=session
+            )
+            session.commit()
+
+            # Test within the session context
+            self.assertEqual(history.email_id, email_id)
+            self.assertEqual(history.action, action)
+            self.assertEqual(history.category, category)
+            self.assertEqual(history.confidence, confidence)
+            self.assertEqual(history.success, success)
+            self.assertEqual(history.error_message, error_message)
 
     def test_clear_tables(self):
         """Test clearing all tables in the database"""
         # First add some data
-        email_id = "clear123"
+        email_id = "test123"
         
         # Add deleted email
         self.db_manager.store_deleted_email(
@@ -172,9 +249,16 @@ class TestDatabaseManager(unittest.TestCase):
         )
         
         # Add processing history
-        self.db_manager.record_processing(
-            email_id, "test_clear", EmailCategory.TECH_AI, True, None
-        )
+        with self.db_manager.get_session() as session:
+            self.db_manager.add_processing_history(
+                email_id=email_id,
+                action="deleted",
+                category=EmailCategory.NON_ESSENTIAL,
+                confidence=0.95,
+                success=True,
+                session=session
+            )
+            session.commit()
         
         # Clear tables
         self.db_manager.clear_tables()

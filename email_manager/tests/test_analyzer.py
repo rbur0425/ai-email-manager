@@ -6,17 +6,27 @@ import logging
 from anthropic import APIError
 
 from ..models import EmailContent
-from ..database.models import EmailCategory
+from ..database.models import EmailCategory, Base
 from ..analyzer.analyzer import EmailAnalyzer
 from ..analyzer.models import InsufficientCreditsError
 from ..logger import get_logger
+from ..database.manager import DatabaseManager
 
 # Set log level for all loggers to reduce noise during tests
 logging.getLogger('email_manager').setLevel(logging.WARNING)
 
 class TestEmailAnalyzer(unittest.TestCase):
     def setUp(self):
-        """Set up test fixtures."""
+        """Set up test environment."""
+        self.claude_api = MagicMock()
+        self.db_manager = DatabaseManager()
+        self.email_analyzer = EmailAnalyzer(self.claude_api, self.db_manager)
+        
+        # Initialize database tables
+        with self.db_manager.get_session() as session:
+            Base.metadata.create_all(session.get_bind())
+
+        # Create a test email
         self.test_email = EmailContent(
             email_id="test123",
             subject="Test Email",
@@ -61,50 +71,41 @@ class TestEmailAnalyzer(unittest.TestCase):
     @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_tech_email_categorization(self, mock_anthropic_class):
         """Test categorization of tech/AI related emails."""
-        # Create a mock response
+        # Mock Claude API response
         mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(
-                text='{"category": "tech_ai", "confidence": 0.85, "reasoning": "Contains AI technology discussion"}',
-                type='text'
-            )
-        ]
-        
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-        mock_anthropic_class.return_value = mock_client
+        mock_response.content = [MagicMock(text='{"category": "tech_ai", "confidence": 0.95, "reasoning": "Contains AI technology discussion"}')]
+        self.claude_api.messages.create.return_value = mock_response
 
-        analyzer = EmailAnalyzer()
-        result = analyzer.analyze_email(self.test_email)
-
-        # Verify result
+        result = self.email_analyzer.analyze_email(self.test_email)
         self.assertEqual(result.category, EmailCategory.TECH_AI)
-        self.assertGreater(result.confidence, 0.8)
-        self.assertTrue(result.reasoning)
+        self.assertGreater(result.confidence, 0.9)
+        self.assertIsNotNone(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_non_essential_email_categorization(self, mock_anthropic_class):
         """Test categorization of non-essential emails."""
-        # Create a mock response
+        # Mock Claude API response
         mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(
-                text='{"category": "non_essential", "confidence": 0.75, "reasoning": "Marketing newsletter"}',
-                type='text'
-            )
-        ]
-        
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-        mock_anthropic_class.return_value = mock_client
+        mock_response.content = [MagicMock(text='{"category": "non_essential", "confidence": 0.95, "reasoning": "Marketing newsletter"}')]
+        self.claude_api.messages.create.return_value = mock_response
 
-        analyzer = EmailAnalyzer()
-        result = analyzer.analyze_email(self.test_email)
-
-        # Verify result
+        result = self.email_analyzer.analyze_email(self.test_email)
         self.assertEqual(result.category, EmailCategory.NON_ESSENTIAL)
-        self.assertGreater(result.confidence, 0.7)
-        self.assertTrue(result.reasoning)
+        self.assertGreater(result.confidence, 0.9)
+        self.assertIsNotNone(result.reasoning)
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_important_email_categorization(self, mock_anthropic_class):
+        """Test categorization of important emails."""
+        # Mock Claude API response
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='{"category": "important", "confidence": 0.95, "reasoning": "Urgent business matter"}')]
+        self.claude_api.messages.create.return_value = mock_response
+
+        result = self.email_analyzer.analyze_email(self.test_email)
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertGreater(result.confidence, 0.9)
+        self.assertIsNotNone(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_api_error_handling(self, mock_anthropic_class):
@@ -151,26 +152,15 @@ class TestEmailAnalyzer(unittest.TestCase):
     @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_invalid_response_handling(self, mock_anthropic_class):
         """Test handling of invalid API responses."""
-        # Create a mock response with invalid JSON
+        # Mock invalid JSON response
         mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(
-                text='{"invalid": "json"',  # Invalid JSON missing closing brace
-                type='text'
-            )
-        ]
-        
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-        mock_anthropic_class.return_value = mock_client
+        mock_response.content = [MagicMock(text='{"invalid": "json"')]  # Invalid JSON
+        self.claude_api.messages.create.return_value = mock_response
 
-        analyzer = EmailAnalyzer()
-        result = analyzer.analyze_email(self.test_email)
-        
-        # Verify we got a fallback analysis
-        self.assertEqual(result.category, EmailCategory.IMPORTANT)
-        self.assertEqual(result.confidence, 0.0)
-        self.assertIn("Failed to parse response as JSON", result.reasoning)
+        result = self.email_analyzer.analyze_email(self.test_email)
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)  # Default category
+        self.assertEqual(result.confidence, 0.0)  # Low confidence for error case
+        self.assertIn("Failed to parse response as JSON", str(result.reasoning))
 
 if __name__ == '__main__':
     unittest.main()
