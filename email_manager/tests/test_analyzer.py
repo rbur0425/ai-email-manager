@@ -108,59 +108,88 @@ class TestEmailAnalyzer(unittest.TestCase):
         self.assertIsNotNone(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
-    def test_api_error_handling(self, mock_anthropic_class):
-        """Test handling of API errors."""
-        # Mock API error
-        error = APIError(
-            message="API Error",
-            request=MagicMock(method="POST", url="https://api.anthropic.com/v1/messages"),
-            body={"error": {"type": "api_error", "message": "API Error"}}
-        )
-        
-        # Set up the mock client to raise the error
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = error
-        mock_anthropic_class.return_value = mock_client
-
-        analyzer = EmailAnalyzer()
-        result = analyzer.analyze_email(self.test_email)
-        
-        # Verify we got a fallback analysis
-        self.assertEqual(result.category, EmailCategory.IMPORTANT)
-        self.assertEqual(result.confidence, 0.0)
-        self.assertIn("API Error", result.reasoning)
-
-    @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_insufficient_credits_handling(self, mock_anthropic_class):
         """Test handling of insufficient credits error."""
-        # Mock API error that indicates insufficient credits
+        # Create mock request for API error
+        mock_request = MagicMock()
+        mock_request.method = "POST"
+        mock_request.url = "https://api.anthropic.com/v1/messages"
+        
+        # Create API error with credit balance message
         error = APIError(
-            message="Your credit balance is too low to make this request",
-            request=MagicMock(method="POST", url="https://api.anthropic.com/v1/messages"),
+            message="Your credit balance is too low",
+            request=mock_request,
             body={"error": {"type": "insufficient_credit", "message": "Your credit balance is too low"}}
         )
-        
-        # Set up the mock client to raise the error
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = error
-        mock_anthropic_class.return_value = mock_client
+        self.claude_api.messages.create.side_effect = error
 
-        analyzer = EmailAnalyzer()
+        # Verify it raises InsufficientCreditsError
         with self.assertRaises(InsufficientCreditsError):
-            analyzer.analyze_email(self.test_email)
+            self.email_analyzer.analyze_email(self.test_email)
+
+        # Verify credits_exhausted flag is set
+        self.assertTrue(self.email_analyzer._credits_exhausted)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
     def test_invalid_response_handling(self, mock_anthropic_class):
         """Test handling of invalid API responses."""
-        # Mock invalid JSON response
+        # Mock Claude API response with invalid JSON
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text='{"invalid": "json"')]  # Invalid JSON
+        mock_response.content = [MagicMock(text='invalid json')]
         self.claude_api.messages.create.return_value = mock_response
 
         result = self.email_analyzer.analyze_email(self.test_email)
-        self.assertEqual(result.category, EmailCategory.IMPORTANT)  # Default category
-        self.assertEqual(result.confidence, 0.0)  # Low confidence for error case
-        self.assertIn("Failed to parse response as JSON", str(result.reasoning))
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertEqual(result.error_message, "Failed to parse response as JSON")
+        self.assertEqual(result.reasoning, "Error occured.")
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_api_error_handling(self, mock_anthropic_class):
+        """Test handling of API errors."""
+        # Mock API error with request
+        mock_request = MagicMock()
+        mock_request.method = "POST"
+        mock_request.url = "https://api.anthropic.com/v1/messages"
+        
+        api_error = APIError(
+            message="API Error occurred",
+            request=mock_request,
+            body={"error": {"type": "api_error", "message": "API Error occurred"}}
+        )
+        self.claude_api.messages.create.side_effect = api_error
+
+        result = self.email_analyzer.analyze_email(self.test_email)
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertEqual(result.error_message, str(api_error))
+        self.assertEqual(result.reasoning, "API Error occurred during analysis")
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_general_error_handling(self, mock_anthropic_class):
+        """Test handling of general errors."""
+        # Mock general error
+        self.claude_api.messages.create.side_effect = Exception("Some error")
+
+        result = self.email_analyzer.analyze_email(self.test_email)
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertEqual(result.error_message, "Error during analysis: Some error")
+        self.assertEqual(result.reasoning, "General error occurred during analysis")
+
+    @patch('email_manager.analyzer.analyzer.Anthropic')
+    def test_invalid_json_response(self, mock_anthropic_class):
+        """Test handling of invalid JSON response."""
+        # Mock Claude API response with invalid JSON
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='invalid json')]
+        self.claude_api.messages.create.return_value = mock_response
+
+        result = self.email_analyzer.analyze_email(self.test_email)
+        self.assertEqual(result.category, EmailCategory.IMPORTANT)
+        self.assertEqual(result.confidence, 0.0)
+        self.assertEqual(result.error_message, "Failed to parse response as JSON")
+        self.assertEqual(result.reasoning, "Error occured.")
 
 if __name__ == '__main__':
     unittest.main()

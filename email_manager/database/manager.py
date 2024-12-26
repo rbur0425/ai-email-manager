@@ -15,13 +15,15 @@ from .models import Base, DeletedEmail, TechContent, ProcessingHistory, EmailCat
 logger = get_logger(__name__)
 
 class DatabaseManager:
-    def __init__(self, schema: str = 'public'):
+    def __init__(self, schema: str = 'public', database_name: Optional[str] = None):
         """Initialize database connection and session factory
         
         Args:
             schema: Database schema to use (defaults to 'public')
+            database_name: Optional database name to override config
         """
-        connection_string = f"postgresql://{config.db.user}:{config.db.password}@{config.db.host}:{config.db.port}/{config.db.name}"
+        db_name = database_name or config.db.name
+        connection_string = f"postgresql://{config.db.user}:{config.db.password}@{config.db.host}:{config.db.port}/{db_name}"
         self.engine = create_engine(connection_string)
         self.SessionLocal = sessionmaker(bind=self.engine)
         self.schema = schema
@@ -253,6 +255,29 @@ class DatabaseManager:
                 session.expunge(record)
             
             return history
+
+    def check_tables_exist(self) -> bool:
+        """Check if all required database tables exist.
+        
+        Returns:
+            bool: True if all tables exist, False otherwise
+        """
+        required_tables = {'processing_history', 'tech_content', 'deleted_emails'}
+        try:
+            with self.engine.connect() as conn:
+                # Get list of existing tables
+                result = conn.execute(text("""
+                    SELECT tablename 
+                    FROM pg_catalog.pg_tables 
+                    WHERE schemaname = :schema
+                """), {'schema': self.schema})
+                existing_tables = {row[0] for row in result}
+                
+                # Check if all required tables exist
+                return required_tables.issubset(existing_tables)
+        except SQLAlchemyError as e:
+            logger.error(f"Error checking tables: {e}")
+            return False
 
     def clear_tables(self) -> None:
         """Clear all tables in the database. Use only for testing.

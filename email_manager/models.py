@@ -19,4 +19,5 @@ class EmailAnalysis:
     category: EmailCategory
     confidence: float
     reasoning: str
+    error_message: Optional[str] = None
     summary: Optional[str] = None  # Only for tech/AI emails

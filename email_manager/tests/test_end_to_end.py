@@ -7,13 +7,21 @@ import unittest
 from datetime import datetime
 import pytz
 from unittest.mock import MagicMock, patch
+import os
 
-from email_manager.database import EmailCategory
+from email_manager.database import EmailCategory, DatabaseManager
 from email_manager.manager import EmailManager, EmailProcessingError
 from email_manager.models import EmailContent, EmailAnalysis
 
 class TestEmailManagerE2E(unittest.TestCase):
     """End-to-end test suite for the Email Manager system."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test database."""
+        # Initialize test database
+        db_manager = DatabaseManager(database_name=os.getenv('TEST_DB_NAME', 'email_manager_test'))
+        db_manager.create_tables()
     
     def setUp(self):
         """Set up test environment before each test."""
@@ -26,6 +34,8 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.db_manager.store_deleted_email.return_value = True
         self.db_manager.archive_tech_content.return_value = True
         self.db_manager.add_processing_history.return_value = True
+        self.db_manager.engine = MagicMock()  # Mock the database engine
+        self.db_manager.SessionLocal = MagicMock()  # Mock the session factory
         
         # Configure gmail service mock
         self.gmail_service.mark_as_read.return_value = True

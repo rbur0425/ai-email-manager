@@ -36,10 +36,25 @@ def main() -> Optional[int]:
     try:
         args = parse_args()
         
-        # Initialize services
+        # Initialize database first to check tables
+        db_manager = DatabaseManager()
+        if not db_manager.check_tables_exist():
+            logger.error("""
+Database tables do not exist. Please run database migrations first:
+
+    python -m email_manager migrate
+
+For development setup, you can also use:
+    
+    python -m email_manager migrate --dev
+
+This will initialize the database with the required schema.
+            """)
+            return 1
+        
+        # Initialize other services
         gmail_service = GmailService()
         email_analyzer = EmailAnalyzer()
-        db_manager = DatabaseManager()
         
         # Create email manager
         email_manager = EmailManager(

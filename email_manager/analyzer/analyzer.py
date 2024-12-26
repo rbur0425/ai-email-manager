@@ -71,7 +71,8 @@ class EmailAnalyzer:
                     action="analyzed",
                     category=analysis.category,
                     confidence=analysis.confidence,
-                    success=True
+                    success=True,
+                    reasoning=analysis.reasoning
                 )
                 return analysis
             
@@ -79,7 +80,8 @@ class EmailAnalyzer:
             error_result = EmailAnalysis(
                 category=EmailCategory.IMPORTANT,
                 confidence=0.0,
-                reasoning="Failed to parse response as JSON"
+                error_message="Failed to parse response as JSON",
+                reasoning="Error occured."
             )
             
             # Record failed analysis
@@ -89,7 +91,8 @@ class EmailAnalyzer:
                 category=error_result.category,
                 confidence=error_result.confidence,
                 success=False,
-                error_message=error_result.reasoning
+                error_message=error_result.error_message,
+                reasoning=error_result.reasoning
             )
             return error_result
             
@@ -107,7 +110,8 @@ class EmailAnalyzer:
             error_result = EmailAnalysis(
                 category=EmailCategory.IMPORTANT,
                 confidence=0.0,
-                reasoning=f"API Error: {error_message}"
+                error_message=str(e),
+                reasoning="API Error occurred during analysis"
             )
             
             try:
@@ -118,7 +122,8 @@ class EmailAnalyzer:
                     category=error_result.category,
                     confidence=error_result.confidence,
                     success=False,
-                    error_message=error_result.reasoning
+                    error_message=error_result.error_message,
+                    reasoning=error_result.reasoning
                 )
             except Exception as db_error:
                 logger.error(f"Failed to record analysis error: {db_error}")
@@ -132,7 +137,8 @@ class EmailAnalyzer:
             error_result = EmailAnalysis(
                 category=EmailCategory.IMPORTANT,
                 confidence=0.0,
-                reasoning=f"Error during analysis: {error_msg}"
+                error_message=f"Error during analysis: {error_msg}",
+                reasoning="General error occurred during analysis"
             )
             
             try:
@@ -143,7 +149,8 @@ class EmailAnalyzer:
                     category=error_result.category,
                     confidence=error_result.confidence,
                     success=False,
-                    error_message=error_msg
+                    error_message=error_result.error_message,
+                    reasoning=error_result.reasoning
                 )
             except Exception as db_error:
                 logger.error(f"Failed to record analysis error: {db_error}")
