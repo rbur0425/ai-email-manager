@@ -1,0 +1,12 @@
+Email Actions:
+Implement functions to:
+Move non-essential emails to trash
+Archive tech/AI content with summaries
+Mark important emails as read
+Store relevant metadata in the database
+Main Application Loop:
+Create the main processing loop that:
+Fetches unread emails
+Processes them through the analyzer
+Takes appropriate actions based on categories
+Handles errors and retries

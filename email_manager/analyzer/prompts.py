@@ -1,4 +1,4 @@
-from .models import EmailContent
+from ..models import EmailContent
 
 def get_analysis_prompt(email: EmailContent) -> str:
     return f"""Analyze this email and determine its category. The email details are:

@@ -1,10 +1,16 @@
 -- Initialize Email Manager Database
 
+-- Drop existing tables and types
+DROP TABLE IF EXISTS processing_history CASCADE;
+DROP TABLE IF EXISTS tech_content CASCADE;
+DROP TABLE IF EXISTS deleted_emails CASCADE;
+DROP TYPE IF EXISTS email_category CASCADE;
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Enum for email categories
-CREATE TYPE email_category AS ENUM ('tech_ai', 'non_essential', 'important');
+CREATE TYPE email_category AS ENUM ('NON_ESSENTIAL', 'TECH_AI', 'IMPORTANT');
 
 -- Deleted Emails Table
 CREATE TABLE deleted_emails (

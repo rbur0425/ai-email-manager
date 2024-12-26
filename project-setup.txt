@@ -20,6 +20,7 @@ email_manager/
 │   │   ├── __init__.py
 │   │   ├── analyzer.py     # Email analysis logic
 │   │   └── client.py       # Claude API client
+│   │   |__ test_analyzer.py #Test analyzer
 │   │
 │   ├── db/                  # Database related modules
 │   │   ├── __init__.py

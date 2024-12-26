@@ -1,21 +1,19 @@
 import json
 from typing import Optional
+import logging
 
 import anthropic
 from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError
 
 from ..config import config
 from ..logger import get_logger
-from .models import (
-    EmailAnalysis,
-    EmailCategory,
-    EmailContent,
-    ClaudeAPIError,
-    InsufficientCreditsError,
-)
+from ..models import EmailAnalysis, EmailContent
+from ..database.models import EmailCategory
+from .models import ClaudeAPIError, InsufficientCreditsError
 from .prompts import get_analysis_prompt, get_summary_prompt
 
 logger = get_logger(__name__)
+logger.setLevel(logging.DEBUG)  # Set logger level to DEBUG
 
 class EmailAnalyzer:
     def __init__(self):
@@ -28,10 +26,13 @@ class EmailAnalyzer:
         try:
             # If credits are already known to be exhausted, fail fast
             if self._credits_exhausted:
+                logger.error("Credits already exhausted, failing fast")
                 raise InsufficientCreditsError("Claude API credits are exhausted")
 
             # Get initial analysis
             analysis_prompt = get_analysis_prompt(email)
+            logger.debug(f"Sending analysis prompt: {analysis_prompt}")
+            
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1000,
@@ -39,12 +40,14 @@ class EmailAnalyzer:
             )
             
             # Debug log the raw response
+            logger.debug(f"Raw Claude response type: {type(response)}")
             logger.debug(f"Raw Claude response: {response}")
             logger.debug(f"Response content type: {type(response.content)}")
             logger.debug(f"Response content: {response.content}")
             
             # Get the first message content
             response_text = response.content[0].text if isinstance(response.content, list) else response.content
+            logger.debug(f"Extracted response text: {response_text}")
             
             # Parse analysis response
             analysis = self._parse_analysis_response(response_text)
@@ -52,6 +55,7 @@ class EmailAnalyzer:
             # If tech/AI related, generate summary
             if analysis.category == EmailCategory.TECH_AI:
                 summary_prompt = get_summary_prompt(email)
+                logger.debug(f"Sending summary prompt: {summary_prompt}")
                 summary_response = self.client.messages.create(
                     model=self.model,
                     max_tokens=1000,
@@ -127,21 +131,26 @@ class EmailAnalyzer:
     def _parse_analysis_response(self, response: str) -> EmailAnalysis:
         """Parse Claude's JSON response into EmailAnalysis object."""
         try:
-            logger.debug(f"Parsing response: {response}")
+            logger.debug(f"Starting to parse response: {response}")
             
             # Parse JSON response
             data = json.loads(response)
+            logger.debug(f"Parsed JSON data: {data}")
             
             # Validate required fields
             if not isinstance(data, dict):
+                logger.error("Response is not a JSON object")
                 raise ValueError("Response is not a JSON object")
                 
             if "category" not in data or "confidence" not in data or "reasoning" not in data:
+                logger.error(f"Missing required fields in JSON response. Available fields: {data.keys()}")
                 raise ValueError("Missing required fields in JSON response")
                 
             # Convert category string to enum
             try:
-                category = EmailCategory(data["category"].lower())
+                logger.debug(f"Raw category from Claude: {data['category']}")
+                category = EmailCategory(data["category"].upper())
+                logger.debug(f"Converted to enum: {category}, type: {type(category)}, value: {category.value}")
             except ValueError:
                 logger.error(f"Invalid category value: {data['category']}")
                 category = EmailCategory.IMPORTANT
@@ -150,12 +159,14 @@ class EmailAnalyzer:
             try:
                 confidence = float(data["confidence"])
                 confidence = max(0.0, min(1.0, confidence))  # Clamp between 0 and 1
-            except (ValueError, TypeError):
-                logger.error("Invalid confidence value")
+                logger.debug(f"Parsed confidence: {confidence}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"Invalid confidence value: {data.get('confidence')}, error: {e}")
                 confidence = 0.0
                 
             # Get reasoning
             reasoning = str(data.get("reasoning", "No reasoning provided"))
+            logger.debug(f"Parsed reasoning: {reasoning}")
 
             return EmailAnalysis(
                 category=category,
