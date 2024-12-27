@@ -153,7 +153,7 @@ class EmailManager:
         if stored:
             # Move to trash only after successful database storage
             self.gmail.move_to_trash(email.email_id)
-            logger.info(f"Non-essential email {email.email_id} stored and moved to trash")
+            logger.info(f"Non-essential email {email.email_id} stored in db and moved to trash")
         else:
             raise EmailProcessingError(f"Failed to store non-essential email {email.email_id}")
     

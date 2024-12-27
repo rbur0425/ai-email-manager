@@ -44,7 +44,7 @@ class EmailAnalyzer:
 
             # Get initial analysis
             analysis_prompt = get_analysis_prompt(email)
-            logger.debug(f"Sending analysis prompt: {analysis_prompt}")
+            logger.debug(f"Sending analysis prompt for email: {email.subject}")
             
             response = self.client.messages.create(
                 model=self.model,
@@ -53,7 +53,7 @@ class EmailAnalyzer:
             )
             
             # Debug log the raw response
-            logger.debug(f"Raw Claude response type: {type(response)}")
+            # logger.debug(f"Raw Claude response type: {type(response)}")
             logger.debug(f"Raw Claude response: {response}")
             logger.debug(f"Response content type: {type(response.content)}")
             logger.debug(f"Response content: {response.content}")
