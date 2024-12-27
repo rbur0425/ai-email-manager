@@ -223,7 +223,7 @@ class EmailAnalyzer:
 
             # Get summary
             summary_prompt = get_summary_prompt(email)
-            logger.debug(f"Sending summary prompt: {summary_prompt}")
+            logger.debug(f"Sending summary prompt for email: {email.subject}")
             
             response = self.client.messages.create(
                 model=self.model,
