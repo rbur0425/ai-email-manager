@@ -1,10 +1,10 @@
-from .models import EmailCategory, DeletedEmail, TechContent, ProcessingHistory
+from .models import EmailCategory, DeletedEmail, SavedEmail, ProcessingHistory
 from .manager import DatabaseManager
 
 __all__ = [
     'EmailCategory',
     'DeletedEmail',
-    'TechContent',
+    'SavedEmail',
     'ProcessingHistory',
     'DatabaseManager'
 ]

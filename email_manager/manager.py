@@ -56,7 +56,7 @@ class EmailManager:
         """Process a batch of unread emails.
         
         Fetches and processes unread emails in batches. Each email is analyzed
-        and handled according to its category (non-essential, tech/AI, important).
+        and handled according to its category (non-essential, save and summarize, important).
         
         Args:
             batch_size: Number of emails to process in one batch
@@ -101,8 +101,8 @@ class EmailManager:
                 # Process based on category
                 if analysis.category == EmailCategory.NON_ESSENTIAL:
                     self._handle_non_essential_email(email)
-                elif analysis.category == EmailCategory.TECH_AI:
-                    self._handle_tech_email(email, analysis)
+                elif analysis.category == EmailCategory.SAVE_AND_SUMMARIZE:
+                    self._handle_save_and_summarize_email(email, analysis)
                 else:  # Important
                     self._handle_important_email(email)
                 
@@ -157,8 +157,8 @@ class EmailManager:
         else:
             raise EmailProcessingError(f"Failed to store non-essential email {email.email_id}")
     
-    def _handle_tech_email(self, email: EmailContent, analysis: EmailAnalysis) -> None:
-        """Handle tech/AI related email processing.
+    def _handle_save_and_summarize_email(self, email: EmailContent, analysis: EmailAnalysis) -> None:
+        """Handle emails that should be saved and summarized.
         
         Archives the email content with its summary and moves original to trash.
         
@@ -169,36 +169,36 @@ class EmailManager:
         Raises:
             EmailProcessingError: If archiving or trash operation fails
         """
-        logger.info(f"Processing tech email: {email.email_id}")
+        logger.info(f"Processing email to save and summarize: {email.email_id}")
         
-        # Generate summary for tech content
+        # Generate summary for content
         try:
             summary = self.analyzer.generate_summary(email)
-            logger.debug(f"Generated summary for tech email: {summary}")
+            logger.debug(f"Generated summary for email: {summary}")
             if summary is None:
-                raise EmailProcessingError("Failed to generate summary for tech email")
+                raise EmailProcessingError("Failed to generate summary for email")
         except (ClaudeAPIError, InsufficientCreditsError) as e:
             raise EmailProcessingError(f"Failed to generate summary: {str(e)}")
         
-        # Store in tech content archive
-        logger.debug(f"Attempting to store tech content for email {email.email_id}")
-        stored = self.db.archive_tech_content(
+        # Store in saved email archive
+        logger.debug(f"Attempting to store saved content for email {email.email_id}")
+        stored = self.db.archive_saved_email(
             email_id=email.email_id,
             subject=email.subject,
             sender=email.sender,
             content=email.content,
             summary=summary,
             received_date=email.received_date,
-            category=EmailCategory.TECH_AI
+            category=EmailCategory.SAVE_AND_SUMMARIZE
         )
-        logger.debug(f"Store tech content result for {email.email_id}: {stored}")
+        logger.debug(f"Store saved content result for {email.email_id}: {stored}")
         
         if stored:
             # Move to trash only after successful archiving
             self.gmail.move_to_trash(email.email_id)
-            logger.info(f"Tech email {email.email_id} archived and moved to trash")
+            logger.info(f"Email {email.email_id} archived and moved to trash")
         else:
-            error_msg = f"Failed to archive tech email {email.email_id}"
+            error_msg = f"Failed to archive email {email.email_id}"
             logger.error(error_msg)
             raise EmailProcessingError(error_msg)
 

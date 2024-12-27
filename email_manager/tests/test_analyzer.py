@@ -69,15 +69,15 @@ class TestEmailAnalyzer(unittest.TestCase):
         self.assertTrue(result.reasoning)
 
     @patch('email_manager.analyzer.analyzer.Anthropic')
-    def test_tech_email_categorization(self, mock_anthropic_class):
-        """Test categorization of tech/AI related emails."""
+    def test_save_and_summarize_categorization(self, mock_anthropic_class):
+        """Test categorization of emails that should be saved and summarized."""
         # Mock Claude API response
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text='{"category": "tech_ai", "confidence": 0.95, "reasoning": "Contains AI technology discussion"}')]
+        mock_response.content = [MagicMock(text='{"category": "save_and_summarize", "confidence": 0.95, "reasoning": "Contains important technical information"}')]
         self.claude_api.messages.create.return_value = mock_response
 
         result = self.email_analyzer.analyze_email(self.test_email)
-        self.assertEqual(result.category, EmailCategory.TECH_AI)
+        self.assertEqual(result.category, EmailCategory.SAVE_AND_SUMMARIZE)
         self.assertGreater(result.confidence, 0.9)
         self.assertIsNotNone(result.reasoning)
 

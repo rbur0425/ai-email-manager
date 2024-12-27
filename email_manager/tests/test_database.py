@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from ..config import config
 from ..database.manager import DatabaseManager
-from ..database.models import Base, DeletedEmail, EmailCategory, TechContent, ProcessingHistory
+from ..database.models import Base, DeletedEmail, EmailCategory, SavedEmail, ProcessingHistory
 
 class TestDatabaseManager(unittest.TestCase):
     """Test cases for DatabaseManager class"""
@@ -64,53 +64,53 @@ class TestDatabaseManager(unittest.TestCase):
             self.assertEqual(deleted_email.sender, sender)
             self.assertEqual(deleted_email.content, content)
 
-    def test_archive_tech_content(self):
-        """Test archiving tech/AI email content"""
-        email_id = "tech123"
-        subject = "AI News"
-        sender = "ai@example.com"
-        content = "Latest in AI"
-        summary = "AI updates"
+    def test_archive_saved_email(self):
+        """Test archiving email content that should be saved"""
+        email_id = "save123"
+        subject = "Important Update"
+        sender = "updates@example.com"
+        content = "Important project update"
+        summary = "Project summary"
         received_date = datetime.now(timezone.utc)
-        category = EmailCategory.TECH_AI
+        category = EmailCategory.SAVE_AND_SUMMARIZE
 
-        # Archive tech content
-        self.db_manager.archive_tech_content(
+        # Archive email content
+        self.db_manager.archive_saved_email(
             email_id, subject, sender, content, summary, received_date, category
         )
 
         # Verify archive
         with self.db_manager.get_session() as session:
-            tech_content = session.query(TechContent).filter_by(email_id=email_id).first()
-            self.assertIsNotNone(tech_content)
-            self.assertEqual(tech_content.subject, subject)
-            self.assertEqual(tech_content.sender, sender)
-            self.assertEqual(tech_content.content, content)
-            self.assertEqual(tech_content.summary, summary)
-            self.assertEqual(tech_content.category, category)
+            saved_email = session.query(SavedEmail).filter_by(email_id=email_id).first()
+            self.assertIsNotNone(saved_email)
+            self.assertEqual(saved_email.subject, subject)
+            self.assertEqual(saved_email.sender, sender)
+            self.assertEqual(saved_email.content, content)
+            self.assertEqual(saved_email.summary, summary)
+            self.assertEqual(saved_email.category, category)
 
-    def test_get_tech_content(self):
-        """Test retrieving archived tech content"""
+    def test_get_saved_email(self):
+        """Test retrieving archived email content"""
         # First archive some content
-        email_id = "tech456"
-        subject = "Tech News"
-        sender = "tech@example.com"
-        content = "Tech updates"
-        summary = "Tech summary"
+        email_id = "save456"
+        subject = "Project News"
+        sender = "project@example.com"
+        content = "Project updates"
+        summary = "Project summary"
         received_date = datetime.now(timezone.utc)
-        category = EmailCategory.TECH_AI
+        category = EmailCategory.SAVE_AND_SUMMARIZE
 
-        self.db_manager.archive_tech_content(
+        self.db_manager.archive_saved_email(
             email_id, subject, sender, content, summary, received_date, category
         )
 
         # Retrieve and verify
         with self.db_manager.get_session() as session:
-            tech_content = session.query(TechContent).filter_by(email_id=email_id).first()
-            self.assertIsNotNone(tech_content)
-            self.assertEqual(tech_content.email_id, email_id)
-            self.assertEqual(tech_content.subject, subject)
-            self.assertEqual(tech_content.content, content)
+            saved_email = session.query(SavedEmail).filter_by(email_id=email_id).first()
+            self.assertIsNotNone(saved_email)
+            self.assertEqual(saved_email.email_id, email_id)
+            self.assertEqual(saved_email.subject, subject)
+            self.assertEqual(saved_email.content, content)
 
     def test_record_processing(self):
         """Test recording email processing history"""
@@ -177,7 +177,7 @@ class TestDatabaseManager(unittest.TestCase):
         """Test adding processing history."""
         email_id = "test123"
         action = "analyzed"
-        category = EmailCategory.TECH_AI
+        category = EmailCategory.SAVE_AND_SUMMARIZE
         confidence = 0.95
         success = True
 
@@ -204,10 +204,10 @@ class TestDatabaseManager(unittest.TestCase):
         """Test adding processing history with error."""
         email_id = "test123"
         action = "analyzed"
-        category = EmailCategory.TECH_AI
-        confidence = 0.0  # Low confidence for error case
+        category = EmailCategory.SAVE_AND_SUMMARIZE
+        confidence = 0.95
         success = False
-        error_message = "Analysis failed"
+        error_message = "Test error"
 
         with self.db_manager.get_session() as session:
             history = self.db_manager.add_processing_history(
@@ -239,15 +239,15 @@ class TestDatabaseManager(unittest.TestCase):
             email_id, "Test Clear", "clear@example.com", "Clear content"
         )
         
-        # Add tech content
-        self.db_manager.archive_tech_content(
+        # Add saved email
+        self.db_manager.archive_saved_email(
             email_id,
-            "Clear Tech",
+            "Clear Saved",
             "clear@example.com",
-            "Clear tech content",
+            "Clear saved content",
             "Clear summary",
             datetime.now(timezone.utc),
-            EmailCategory.TECH_AI
+            EmailCategory.SAVE_AND_SUMMARIZE
         )
         
         # Add processing history
@@ -268,7 +268,7 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify all tables are empty
         with self.db_manager.get_session() as session:
             self.assertEqual(session.query(DeletedEmail).count(), 0)
-            self.assertEqual(session.query(TechContent).count(), 0)
+            self.assertEqual(session.query(SavedEmail).count(), 0)
             self.assertEqual(session.query(ProcessingHistory).count(), 0)
 
 if __name__ == '__main__':

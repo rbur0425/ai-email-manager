@@ -202,7 +202,7 @@ class EmailAnalyzer:
             return None
 
     def generate_summary(self, email: EmailContent) -> Optional[str]:
-        """Generate a summary for a tech/AI email using Claude.
+        """Generate a summary for an email that should be saved.
         
         Args:
             email: The email to summarize

@@ -11,7 +11,7 @@ Base = declarative_base()
 
 class EmailCategory(str, Enum):
     """Email categories enum matching the database enum"""
-    TECH_AI = 'TECH_AI'
+    SAVE_AND_SUMMARIZE = 'SAVE_AND_SUMMARIZE'
     NON_ESSENTIAL = 'NON_ESSENTIAL'
     IMPORTANT = 'IMPORTANT'
 
@@ -33,9 +33,9 @@ class DeletedEmail(Base):
     def __repr__(self):
         return f"<DeletedEmail(email_id='{self.email_id}', subject='{self.subject}')>"
 
-class TechContent(Base):
-    """Model for archiving tech/AI related content"""
-    __tablename__ = 'tech_content'
+class SavedEmail(Base):
+    """Model for archiving emails that should be saved and summarized based on user preferences"""
+    __tablename__ = 'saved_emails'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email_id = Column(String(255), unique=True, nullable=False)
@@ -48,7 +48,7 @@ class TechContent(Base):
     archived_date = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     def __repr__(self):
-        return f"<TechContent(email_id='{self.email_id}', subject='{self.subject}')>"
+        return f"<SavedEmail(email_id='{self.email_id}', subject='{self.subject}')>"
 
 class ProcessingHistory(Base):
     """Model for tracking email processing history"""
@@ -59,7 +59,7 @@ class ProcessingHistory(Base):
     processing_date = Column(DateTime(timezone=True), default=datetime.utcnow)
     action = Column(String(50), nullable=False)  # 'deleted', 'archived', 'marked_read'
     category = Column(SQLAlchemyEnum(EmailCategory), nullable=False)
-    confidence = Column(Float, nullable=False, default=0.0)  # New column for confidence score
+    confidence = Column(Float, nullable=False, default=0.0)
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
     reasoning = Column(Text)

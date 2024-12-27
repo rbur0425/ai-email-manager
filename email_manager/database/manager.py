@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..config import config
 from ..logger import get_logger
-from .models import Base, DeletedEmail, TechContent, ProcessingHistory, EmailCategory
+from .models import Base, DeletedEmail, SavedEmail, ProcessingHistory, EmailCategory
 
 logger = get_logger(__name__)
 
@@ -95,10 +95,10 @@ class DatabaseManager:
             session.flush()  # Ensure the record is created and id is available
             return record_id
 
-    def archive_tech_content(self, email_id: str, subject: str, sender: str, 
+    def archive_saved_email(self, email_id: str, subject: str, sender: str, 
                            content: str, summary: str, received_date: datetime,
-                           category: EmailCategory = EmailCategory.TECH_AI) -> UUID:
-        """Archive tech/AI related email content
+                           category: EmailCategory = EmailCategory.SAVE_AND_SUMMARIZE) -> UUID:
+        """Archive an email that should be saved and summarized
         
         Args:
             email_id: Unique identifier of the email
@@ -107,7 +107,7 @@ class DatabaseManager:
             content: Full email content
             summary: Generated summary of the content
             received_date: When the email was received (should be timezone-aware)
-            category: Email category (defaults to TECH_AI)
+            category: Email category (defaults to SAVE_AND_SUMMARIZE)
             
         Returns:
             UUID of the created record
@@ -120,7 +120,7 @@ class DatabaseManager:
             raise ValueError("received_date must be timezone-aware")
             
         record_id = uuid4()
-        tech_content = TechContent(
+        saved_email = SavedEmail(
             id=record_id,
             email_id=email_id,
             subject=subject,
@@ -132,7 +132,7 @@ class DatabaseManager:
         )
         
         with self.get_session() as session:
-            session.add(tech_content)
+            session.add(saved_email)
             session.flush()  # Ensure the record is created and id is available
             return record_id
 
@@ -168,22 +168,22 @@ class DatabaseManager:
             session.flush()  # Flush to get the ID but don't commit yet
             return history
 
-    def get_tech_content(self, email_id: str) -> Optional[TechContent]:
-        """Retrieve archived tech content by email ID
+    def get_saved_email(self, email_id: str) -> Optional[SavedEmail]:
+        """Retrieve saved email by email ID
         
         Args:
             email_id: Unique identifier of the email
             
         Returns:
-            TechContent if found, None otherwise
+            SavedEmail if found, None otherwise
             
         Raises:
             SQLAlchemyError: If there's a database error
         """
         with self.get_session() as session:
             # Query for the content and ensure we get a fresh instance
-            result = session.query(TechContent)\
-                .filter(TechContent.email_id == email_id)\
+            result = session.query(SavedEmail)\
+                .filter(SavedEmail.email_id == email_id)\
                 .first()
             
             if result is None:
@@ -191,7 +191,7 @@ class DatabaseManager:
             
             # Create a detached copy with all attributes loaded
             session.refresh(result)
-            tech_content = TechContent(
+            saved_email = SavedEmail(
                 id=result.id,
                 email_id=result.email_id,
                 subject=result.subject,
@@ -202,7 +202,7 @@ class DatabaseManager:
                 category=result.category,
                 archived_date=result.archived_date
             )
-            return tech_content
+            return saved_email
 
     def get_deleted_email(self, email_id: str) -> Optional[DeletedEmail]:
         """Retrieve deleted email metadata by email ID
@@ -262,7 +262,7 @@ class DatabaseManager:
         Returns:
             bool: True if all tables exist, False otherwise
         """
-        required_tables = {'processing_history', 'tech_content', 'deleted_emails'}
+        required_tables = {'processing_history', 'saved_emails', 'deleted_emails'}
         try:
             with self.engine.connect() as conn:
                 # Get list of existing tables
@@ -291,6 +291,6 @@ class DatabaseManager:
         with self.get_session() as session:
             # Clear all tables in a specific order to handle foreign keys
             session.execute(text(f"TRUNCATE TABLE {self.schema}.processing_history CASCADE"))
-            session.execute(text(f"TRUNCATE TABLE {self.schema}.tech_content CASCADE"))
+            session.execute(text(f"TRUNCATE TABLE {self.schema}.saved_emails CASCADE"))
             session.execute(text(f"TRUNCATE TABLE {self.schema}.deleted_emails CASCADE"))
             session.commit()

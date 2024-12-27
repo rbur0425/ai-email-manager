@@ -2,7 +2,7 @@
 
 -- Drop existing tables and types
 DROP TABLE IF EXISTS processing_history CASCADE;
-DROP TABLE IF EXISTS tech_content CASCADE;
+DROP TABLE IF EXISTS saved_emails CASCADE;
 DROP TABLE IF EXISTS deleted_emails CASCADE;
 DROP TYPE IF EXISTS emailcategory CASCADE;
 
@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'emailcategory') THEN
-        CREATE TYPE emailcategory AS ENUM ('TECH_AI', 'NON_ESSENTIAL', 'IMPORTANT');
+        CREATE TYPE emailcategory AS ENUM ('SAVE_AND_SUMMARIZE', 'NON_ESSENTIAL', 'IMPORTANT');
     END IF;
 END $$;
 
@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS deleted_emails (
     deletion_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tech/AI Content Archive
-CREATE TABLE IF NOT EXISTS tech_content (
+-- Saved Emails Archive
+CREATE TABLE IF NOT EXISTS saved_emails (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email_id VARCHAR(255) UNIQUE NOT NULL,
     subject TEXT NOT NULL,
@@ -55,16 +55,16 @@ CREATE TABLE IF NOT EXISTS processing_history (
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_deleted_emails_email_id ON deleted_emails(email_id);
-CREATE INDEX IF NOT EXISTS idx_tech_content_email_id ON tech_content(email_id);
+CREATE INDEX IF NOT EXISTS idx_saved_emails_email_id ON saved_emails(email_id);
 CREATE INDEX IF NOT EXISTS idx_processing_history_email_id ON processing_history(email_id);
-CREATE INDEX IF NOT EXISTS idx_tech_content_category ON tech_content(category);
+CREATE INDEX IF NOT EXISTS idx_saved_emails_category ON saved_emails(category);
 CREATE INDEX IF NOT EXISTS idx_deleted_emails_deletion_date ON deleted_emails(deletion_date);
-CREATE INDEX IF NOT EXISTS idx_tech_content_received_date ON tech_content(received_date);
+CREATE INDEX IF NOT EXISTS idx_saved_emails_received_date ON saved_emails(received_date);
 CREATE INDEX IF NOT EXISTS idx_processing_history_date ON processing_history(processing_date);
 
 -- Add helpful table descriptions
 COMMENT ON TABLE deleted_emails IS 'Stores metadata for emails that have been moved to trash';
-COMMENT ON TABLE tech_content IS 'Archives important technical and AI-related content with summaries';
+COMMENT ON TABLE saved_emails IS 'Archives important emails with summaries based on user preferences';
 COMMENT ON TABLE processing_history IS 'Tracks all email processing operations for analysis and debugging';
 
 -- Grant necessary permissions

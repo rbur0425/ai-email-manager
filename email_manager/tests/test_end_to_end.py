@@ -1,6 +1,6 @@
 """
 End-to-end test for the Email Manager system.
-Testing non-essential, tech, important email processing, error handling, batch processing,
+Testing non-essential, save-and-summarize, important email processing, error handling, batch processing,
 edge cases, and infrastructure failures.
 """
 import unittest
@@ -32,7 +32,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         
         # Configure db_manager mock with required methods
         self.db_manager.store_deleted_email.return_value = True
-        self.db_manager.archive_tech_content.return_value = True
+        self.db_manager.archive_saved_email.return_value = True
         self.db_manager.add_processing_history.return_value = True
         self.db_manager.engine = MagicMock()  # Mock the database engine
         self.db_manager.SessionLocal = MagicMock()  # Mock the session factory
@@ -78,14 +78,14 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.gmail_service.move_to_trash.assert_called_once_with(self.test_email.email_id)
         self.db_manager.add_processing_history.assert_called_once()
     
-    def test_tech_email_flow(self):
-        """Test complete flow for tech/AI email processing."""
+    def test_save_and_summarize_email_flow(self):
+        """Test complete flow for emails that should be saved and summarized."""
         # Setup test email
         test_email = EmailContent(
             email_id="test123",
-            subject="Tech Email",
+            subject="Project Update",
             sender="test@example.com",
-            content="Tech content",
+            content="Project content",
             received_date=datetime.now(pytz.UTC)
         )
         
@@ -94,9 +94,9 @@ class TestEmailManagerE2E(unittest.TestCase):
         
         # Configure successful analysis
         analysis = EmailAnalysis(
-            category=EmailCategory.TECH_AI,
+            category=EmailCategory.SAVE_AND_SUMMARIZE,
             confidence=0.95,
-            reasoning="Tech content detected",
+            reasoning="Important project content detected",
             summary="• Point 1\n• Point 2\n• Point 3"
         )
         self.email_analyzer.analyze_email.return_value = analysis
@@ -105,7 +105,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.email_analyzer.generate_summary.return_value = analysis.summary
         
         # Configure successful database operations
-        self.db_manager.archive_tech_content.return_value = True
+        self.db_manager.archive_saved_email.return_value = True
         
         # Process the email
         self.email_manager.process_unread_emails(batch_size=1)
@@ -116,15 +116,15 @@ class TestEmailManagerE2E(unittest.TestCase):
         # Verify summary was generated
         self.email_analyzer.generate_summary.assert_called_once_with(test_email)
         
-        # Verify tech content was archived
-        self.db_manager.archive_tech_content.assert_called_once_with(
+        # Verify content was archived
+        self.db_manager.archive_saved_email.assert_called_once_with(
             email_id=test_email.email_id,
             subject=test_email.subject,
             sender=test_email.sender,
             content=test_email.content,
             summary=analysis.summary,
             received_date=test_email.received_date,
-            category=EmailCategory.TECH_AI
+            category=EmailCategory.SAVE_AND_SUMMARIZE
         )
         
         # Verify email was moved to trash after archiving
@@ -222,11 +222,11 @@ class TestEmailManagerE2E(unittest.TestCase):
             received_date=datetime.now(pytz.UTC)
         )
         
-        tech_email = EmailContent(
-            email_id="tech456",
-            subject="AI Update",
-            sender="tech@example.com",
-            content="New AI developments",
+        save_and_summarize_email = EmailContent(
+            email_id="save456",
+            subject="Project Update",
+            sender="test@example.com",
+            content="Project content",
             received_date=datetime.now(pytz.UTC)
         )
         
@@ -241,7 +241,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         # Setup mock returns
         self.gmail_service.get_unread_emails.return_value = [
             non_essential_email,
-            tech_email,
+            save_and_summarize_email,
             important_email
         ]
         
@@ -254,12 +254,12 @@ class TestEmailManagerE2E(unittest.TestCase):
                     reasoning="Advertisement detected",
                     summary=None
                 )
-            elif email.email_id == "tech456":
+            elif email.email_id == "save456":
                 return EmailAnalysis(
-                    category=EmailCategory.TECH_AI,
+                    category=EmailCategory.SAVE_AND_SUMMARIZE,
                     confidence=0.85,
-                    reasoning="Tech content detected",
-                    summary="Summary of large technical content"
+                    reasoning="Project content detected",
+                    summary="Summary of large project content"
                 )
             else:
                 return EmailAnalysis(
@@ -281,9 +281,9 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.db_manager.store_deleted_email.assert_called_once()
         self.gmail_service.move_to_trash.assert_any_call("ad123")
         
-        # Verify tech email processing
-        self.db_manager.archive_tech_content.assert_called_once()
-        self.gmail_service.move_to_trash.assert_any_call("tech456")
+        # Verify save and summarize email processing
+        self.db_manager.archive_saved_email.assert_called_once()
+        self.gmail_service.move_to_trash.assert_any_call("save456")
         
         # Verify important email processing
         self.gmail_service.mark_as_read.assert_called_once_with("imp789")
@@ -349,10 +349,10 @@ class TestEmailManagerE2E(unittest.TestCase):
                 )
             elif email.email_id == "large456":
                 return EmailAnalysis(
-                    category=EmailCategory.TECH_AI,
+                    category=EmailCategory.SAVE_AND_SUMMARIZE,
                     confidence=0.85,
-                    reasoning="Large technical content detected",
-                    summary="Summary of large technical content"
+                    reasoning="Large project content detected",
+                    summary="Summary of large project content"
                 )
             elif email.email_id == "special789":
                 return EmailAnalysis(
@@ -381,7 +381,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         self.gmail_service.move_to_trash.assert_any_call("empty123")
         
         # Verify large email was processed and stored
-        self.db_manager.archive_tech_content.assert_called_once()
+        self.db_manager.archive_saved_email.assert_called_once()
         self.gmail_service.move_to_trash.assert_any_call("large456")
         
         # Verify special characters email was marked as important
@@ -438,56 +438,40 @@ class TestEmailManagerE2E(unittest.TestCase):
         )
 
     def test_database_failures(self):
-        """Test handling of database connection failures.
-        
-        When database operations fail:
-        1. The error should be logged
-        2. The email should be marked as unread for retry in next batch
-        3. An EmailProcessingError should be raised with the appropriate message
-        """
-        # Reset mock call counts
-        self.gmail_service.reset_mock()
-        self.email_analyzer.reset_mock()
-        self.db_manager.reset_mock()
-        
+        """Test handling of database connection failures."""
         # Configure test data
         self.gmail_service.get_unread_emails.return_value = [self.test_email]
         self.email_analyzer.analyze_email.return_value = EmailAnalysis(
-            category=EmailCategory.TECH_AI,
+            category=EmailCategory.SAVE_AND_SUMMARIZE,
             confidence=0.90,
-            reasoning="Tech content detected",
-            summary="Summary of tech content"
+            reasoning="Project content detected",
+            summary="Summary of project content"
         )
         
         # Simulate database failures
-        self.db_manager.archive_tech_content.return_value = False  # Simulate store failure
+        self.db_manager.archive_saved_email.return_value = False  # Simulate store failure
         
         # Execute with database failures and verify error handling
         with self.assertLogs('email_manager.manager', level='DEBUG') as log:
             with self.assertRaises(EmailProcessingError) as context:
                 self.email_manager.process_unread_emails(batch_size=1, max_retries=1)
             
-            # Print all logs for debugging
-            print("\nDebug logs:")
-            for msg in log.output:
-                print(msg)
-            
             # Verify the error message
             error_msg = str(context.exception)
             self.assertIn("Failed to process email after 1 attempts", error_msg)
-            self.assertIn("Failed to archive tech email", error_msg)
+            self.assertIn("Failed to archive email", error_msg)
             
             # Verify error was logged
             error_logs = [msg for msg in log.output if "ERROR" in msg]
-            self.assertTrue(any("Failed to archive tech email" in msg for msg in error_logs))
+            self.assertTrue(any("Failed to archive email" in msg for msg in error_logs))
             
             # Verify debug logs show the flow
             debug_logs = [msg for msg in log.output if "DEBUG" in msg]
-            self.assertTrue(any("Attempting to store tech content" in msg for msg in debug_logs))
-            self.assertTrue(any("Store tech content result" in msg for msg in debug_logs))
+            self.assertTrue(any("Attempting to store saved content" in msg for msg in debug_logs))
+            self.assertTrue(any("Store saved content result" in msg for msg in debug_logs))
             
             # Verify attempted database operations
-            self.assertEqual(self.db_manager.archive_tech_content.call_count, 1)
+            self.assertEqual(self.db_manager.archive_saved_email.call_count, 1)
             
             # Verify no trash operations were performed (since store failed)
             self.gmail_service.move_to_trash.assert_not_called()
@@ -516,7 +500,7 @@ class TestEmailManagerE2E(unittest.TestCase):
         
         # Verify no further processing was attempted
         self.email_analyzer.analyze_email.assert_not_called()
-        self.db_manager.archive_tech_content.assert_not_called()
+        self.db_manager.archive_saved_email.assert_not_called()
         self.gmail_service.move_to_trash.assert_not_called()
 
     def test_cleanup_after_processing(self):

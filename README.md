@@ -21,7 +21,7 @@ An intelligent email management system powered by AI to automatically categorize
 
 - **Smart Email Categorization**: Automatically categorizes emails into:
   - Important (kept in inbox)
-  - Tech/AI related (archived with summaries)
+  - Save & Summarize (emails you want to archive with summaries)
   - Non-essential (stored and cleaned up)
 
 - **AI-Powered Analysis**: Uses Claude AI to understand email content and context
@@ -81,9 +81,9 @@ An intelligent email management system powered by AI to automatically categorize
    # - ANTHROPIC_API_KEY
    ```
 
-5. Run database migrations:
+5. Initialize the database:
    ```bash
-   python -m email_manager.database.migrations
+   psql -U your_username -d your_database -f scripts/db-init.sql
    ```
 
 ### Running Tests
@@ -104,13 +104,13 @@ python -m unittest email_manager.tests.test_gmail_service -v
 # Database tests
 python -m unittest email_manager.tests.test_database -v
 
-# Email analyzer tests
+# Analyzer tests
 python -m unittest email_manager.tests.test_analyzer -v
 ```
 
 Run tests with debug logging:
 ```bash
-LOGLEVEL=DEBUG python -m unittest email_manager.tests.test_end_to_end -v
+LOGLEVEL=DEBUG python -m unittest discover -v
 ```
 
 ### Usage
